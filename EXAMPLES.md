@@ -146,7 +146,7 @@ Each list maintains its own items independently.
 
 ### Example 1: Custom Templates
 
-Edit `app.js`, find the `renderTemplates()` function (around line 542):
+Edit `app.js`, find the `renderTemplates()` function:
 
 ```javascript
 const templates = [
