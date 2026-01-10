@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Young Lists</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4F46E5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- 
+    ===================================================================
+    YOUNG HOUSEHOLD LISTS - SETUP INSTRUCTIONS
+    ===================================================================
+    1) Create Firebase Project at https://console.firebase.google.com/
+    2) Enable "Cloud Firestore" in the Firebase Console.
+       - Start in "Production mode".
+       - Go to "Rules" tab. (See security notes below).
+    3) Enable "Authentication" in the Firebase Console.
+       - Sign-in method: Enable "Email/Password".
+    4) **CRITICAL SECURITY STEP**: 
+       - Manually create a collection named `meta`.
+       - Create a document in `meta` with ID `allowedUsers`.
+       - Add a field named `uids` (type: Array).
+       - Add your (the owner's) User UID to this array. (You can get your UID from Auth tab after creating a user, or run the app, sign up, copy UID from console/settings, and paste it here from the Firebase Console).
+    5) Copy your Firebase Web Config object:
+       - Go to Project Settings -> General -> Your apps -> Add app (Web) -> Register.
+       - Copy the `firebaseConfig` object keys.
+       - Paste them into `app.js` where indicated.
+    6) Deploy to GitHub Pages (or any HTTPS host).
+       - Ensure `sw.js` is at the root.
+    7) Service Worker / PWA Notes:
+       - The app caches `index.html`, `styles.css`, `app.js`.
+       - To see code changes immediately during dev, use Incognito or "Update on reload" in DevTools Application tab.
+       - In prod, users will see an "Update available" toast when a new version is deployed.
+    
+    ===================================================================
+    FIRESTORE SECURITY RULES (Copy to Firebase Console -> Firestore -> Rules)
+    ===================================================================
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        
+        // Helper function to check if user is allowed
+        function isAllowed() {
+          return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/meta/allowedUsers).data.uids;
+        }
+
+        // Meta collection: Only allowed users can read. NO ONE can write from client (admin only).
+        match /meta/allowedUsers {
+          allow read: if request.auth != null; // Must read to check permissions
+          allow write: if false; // Admin console only
+        }
+
+        // Lists collection: Only allowed users can read/write
+        match /lists/{listId} {
+          allow read, write: if isAllowed();
+          
+          match /items/{itemId} {
+            allow read, write: if isAllowed();
+          }
+        }
+
+        // History collection: Only allowed users
+        match /history/{tripId} {
+          allow read, write: if isAllowed();
+          
+          match /items/{itemId} {
+             allow read, write: if isAllowed();
+          }
+        }
+      }
+    }
+    ===================================================================
+    -->
+</head>
+
+<body>
+
+    <!-- APP SHELL -->
+    <div id="app" class="app-container">
+
+        <!-- LOADING / SPLASH -->
+        <div id="view-loading" class="view view-active centered-content">
+            <div class="spinner"></div>
+            <p>Loading Young Lists...</p>
+        </div>
+
+        <!-- AUTH SCREEN -->
+        <div id="view-auth" class="view centered-content hidden">
+            <h1>Young Lists</h1>
+            <p class="subtitle">Shared Household Shopping</p>
+
+            <form id="auth-form" class="auth-form">
+                <div class="input-group">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" placeholder="name@example.com" required autocomplete="email">
+                </div>
+                <div class="input-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" placeholder="••••••••" required
+                        autocomplete="current-password">
+                </div>
+                <div id="auth-error" class="error-msg hidden"></div>
+
+                <div class="auth-buttons">
+                    <button type="submit" id="btn-signin" class="btn btn-primary">Sign In</button>
+                    <button type="button" id="btn-signup" class="btn btn-secondary">Create Account</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ACCESS DENIED SCREEN -->
+        <div id="view-access-denied" class="view centered-content hidden">
+            <div class="icon-large">🔒</div>
+            <h2>Access Not Granted</h2>
+            <p class="text-center">Your User UID is not on the allowed list for this household.</p>
+            <div class="code-box" id="user-uid-display">Loading UID...</div>
+            <p class="text-small text-center">Send this code to the owner to add you in Settings.</p>
+            <button id="btn-logout-denied" class="btn btn-secondary">Sign Out</button>
+        </div>
+
+        <!-- MAIN APP SCREENS (Tabbed) -->
+        <div id="view-main" class="view hidden">
+
+            <!-- HEADER -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button id="btn-back" class="icon-btn hidden">←</button>
+                </div>
+                <h1 id="header-title">Young Lists</h1>
+                <div class="header-right">
+                    <button id="btn-menu" class="icon-btn hidden">…</button>
+                </div>
+            </header>
+
+            <!-- CONTENT AREAS -->
+            <main class="app-content">
+
+                <!-- HOME TAB: DASHBOARD -->
+                <div id="tab-home" class="tab-content active">
+                    <div id="lists-container" class="card-grid">
+                        <!-- List Cards Injection -->
+                    </div>
+
+                    <div class="create-list-panel">
+                        <h3>Create New List</h3>
+                        <div class="input-row">
+                            <input type="text" id="new-list-name" placeholder="E.g. Groceries, Target...">
+                            <button id="btn-create-list" class="btn btn-primary btn-sm">Create</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HISTORY TAB -->
+                <div id="tab-history" class="tab-content hidden">
+                    <div class="section-title">Use History</div>
+                    <div id="history-container" class="list-vertical">
+                        <!-- History Items Injection -->
+                    </div>
+
+                    <div class="section-title mt-large">Archived Lists</div>
+                    <div id="archived-lists-container" class="card-grid">
+                        <!-- Archived Lists Injection -->
+                    </div>
+                </div>
+
+                <!-- TEMPLATES TAB -->
+                <div id="tab-templates" class="tab-content hidden">
+                    <div class="section-title">Quick Starters</div>
+                    <div id="templates-container" class="card-grid">
+                        <!-- Templates Injection -->
+                    </div>
+                </div>
+
+                <!-- SETTINGS TAB -->
+                <div id="tab-settings" class="tab-content hidden">
+                    <div class="settings-group">
+                        <h3>Account</h3>
+                        <p id="settings-email" class="text-muted">...</p>
+                        <button id="btn-logout" class="btn btn-outline btn-full">Sign Out</button>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>Household Access</h3>
+                        <div class="field-label">My UID</div>
+                        <div class="copy-row">
+                            <code id="settings-my-uid">...</code>
+                            <button id="btn-copy-uid" class="btn-xs">Copy</button>
+                        </div>
+
+                        <div class="field-label mt-small">Allowed UIDs</div>
+                        <ul id="allowed-uids-list" class="simple-list">
+                            <!-- Allowed UIDs injection -->
+                        </ul>
+
+                        <div class="add-uid-row mt-small">
+                            <input type="text" id="new-allowed-uid" placeholder="Paste UID here">
+                            <button id="btn-add-uid" class="btn btn-primary btn-sm">Add</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3>App</h3>
+                        <div class="flex-row-between">
+                            <span>Version</span>
+                            <span class="text-muted">v0.1</span>
+                        </div>
+                        <button id="btn-check-update" class="btn btn-outline btn-full mt-small">Check for updates /
+                            Refresh</button>
+                    </div>
+                </div>
+
+                <!-- LIST DETAIL VIEW (Full screen overlay style inside main) -->
+                <div id="view-list-detail" class="tab-content hidden overlay-view">
+
+                    <div class="list-toolbar">
+                        <div class="search-bar">
+                            <input type="text" id="item-search" placeholder="Search items...">
+                        </div>
+                    </div>
+
+                    <div id="list-items-container" class="items-list">
+                        <!-- Items Injection -->
+                    </div>
+
+                    <div class="quick-add-bar">
+                        <input type="text" id="quick-add-input" placeholder="Type items (comma for multiple)..."
+                            autocomplete="off">
+                        <button id="btn-quick-add" class="btn-circle-add">+</button>
+                    </div>
+                </div>
+
+            </main>
+
+            <!-- BOTTOM NAVIGATION -->
+            <nav id="bottom-nav" class="bottom-nav">
+                <button class="nav-btn active" data-tab="home">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Home</span>
+                </button>
+                <button class="nav-btn" data-tab="history">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-label">History</span>
+                </button>
+                <button class="nav-btn" data-tab="templates">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-label">Templates</span>
+                </button>
+                <button class="nav-btn" data-tab="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </button>
+            </nav>
+
+        </div>
+    </div>
+
+    <!-- TOAST / NOTIFICATION -->
+    <div id="toast-container" class="toast-container">
+        <div id="update-toast" class="toast hidden">
+            <span>🚀 New version available!</span>
+            <button id="btn-refresh-worker">Refresh</button>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs (using CDN for vanilla JS simplicity) -->
+    <!-- COMPAT: using compat libraries for simpler syntax in vanilla JS if desired, or modular. 
+         Let's use Modular v9+ script tags (module). -->
+    <script type="module" src="app.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('SW registered: ', registration);
+
+                    // Check for updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // New update available
+                                const toast = document.getElementById('update-toast');
+                                if (toast) toast.classList.remove('hidden');
+                            }
+                        });
+                    });
+                }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+            });
+
+            // Handle refresh button
+            document.getElementById('btn-refresh-worker')?.addEventListener('click', () => {
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

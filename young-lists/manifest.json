@@ -1,0 +1,21 @@
+{
+  "name": "Young Household Lists",
+  "short_name": "Young Lists",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F9FAFB",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192.png?text=Icon",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512.png?text=Icon",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
