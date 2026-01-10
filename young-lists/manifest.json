@@ -8,14 +8,16 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "https://via.placeholder.com/192x192.png?text=Icon",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%234F46E5' width='192' height='192'/><rect fill='white' x='48' y='38' width='96' height='116' rx='8'/><path fill='%234F46E5' d='M64 60h8v8h-8z M80 60h40v2h-40z M64 80h8v8h-8z M80 80h40v2h-40z M64 100h8v8h-8z M80 100h40v2h-40z M64 120h8v8h-8z M80 120h40v2h-40z'/></svg>",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     },
     {
-      "src": "https://via.placeholder.com/512x512.png?text=Icon",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%234F46E5' width='512' height='512'/><rect fill='white' x='128' y='102' width='256' height='308' rx='20'/><path fill='%234F46E5' d='M171 160h20v20h-20z M214 160h107v5h-107z M171 214h20v20h-20z M214 214h107v5h-107z M171 268h20v20h-20z M214 268h107v5h-107z M171 322h20v20h-20z M214 322h107v5h-107z'/></svg>",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
