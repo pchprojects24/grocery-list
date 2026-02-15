@@ -1,4 +1,4 @@
-const CACHE_NAME = 'young-lists-v1';
+const CACHE_NAME = 'young-lists-v2';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

@@ -68,10 +68,15 @@
         // History collection: Only allowed users
         match /history/{tripId} {
           allow read, write: if isAllowed();
-          
+
           match /items/{itemId} {
              allow read, write: if isAllowed();
           }
+        }
+
+        // Stores collection: Only allowed users
+        match /stores/{storeId} {
+          allow read, write: if isAllowed();
         }
       }
     }
@@ -177,6 +182,40 @@
                     </div>
                 </div>
 
+                <!-- STORES TAB -->
+                <div id="tab-stores" class="tab-content hidden">
+                    <div class="section-title">My Stores</div>
+                    <p class="text-muted text-small">Map out your local stores by adding sections in walking order. Your grocery list will sort items to match your route through the store.</p>
+                    <div id="stores-container" class="card-grid">
+                        <!-- Store Cards Injection -->
+                    </div>
+
+                    <div class="create-list-panel mt-large">
+                        <h3>Add a Store</h3>
+                        <div class="input-row">
+                            <input type="text" id="new-store-name" placeholder="E.g. Kroger, Walmart, Costco...">
+                            <button id="btn-create-store" class="btn btn-primary btn-sm">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STORE DETAIL VIEW -->
+                <div id="view-store-detail" class="tab-content hidden overlay-view">
+                    <div class="store-detail-header">
+                        <h3 id="store-detail-name">Store Name</h3>
+                        <p class="text-muted text-small">Add sections/aisles in the order you walk through the store. Use the arrows to reorder.</p>
+                    </div>
+
+                    <div id="store-sections-container" class="sections-list">
+                        <!-- Sections Injection -->
+                    </div>
+
+                    <div class="quick-add-bar">
+                        <input type="text" id="new-section-input" placeholder="Add section (e.g. Produce, Dairy, Frozen)..." autocomplete="off">
+                        <button id="btn-add-section" class="btn-circle-add">+</button>
+                    </div>
+                </div>
+
                 <!-- SETTINGS TAB -->
                 <div id="tab-settings" class="tab-content hidden">
                     <div class="settings-group">
@@ -219,8 +258,16 @@
                 <div id="view-list-detail" class="tab-content hidden overlay-view">
 
                     <div class="list-toolbar">
-                        <div class="search-bar">
-                            <input type="text" id="item-search" placeholder="Search items...">
+                        <div class="toolbar-row">
+                            <div class="search-bar" style="flex:1">
+                                <input type="text" id="item-search" placeholder="Search items...">
+                            </div>
+                        </div>
+                        <div class="toolbar-row store-selector-row">
+                            <label class="text-small text-muted">Store route:</label>
+                            <select id="list-store-select" class="store-select">
+                                <option value="">No store (default order)</option>
+                            </select>
                         </div>
                     </div>
 
@@ -229,6 +276,9 @@
                     </div>
 
                     <div class="quick-add-bar">
+                        <select id="quick-add-section" class="section-select" title="Section">
+                            <option value="">No section</option>
+                        </select>
                         <input type="text" id="quick-add-input" placeholder="Type items (comma for multiple)..."
                             autocomplete="off">
                         <button id="btn-quick-add" class="btn-circle-add">+</button>
@@ -247,9 +297,9 @@
                     <span class="nav-icon">📜</span>
                     <span class="nav-label">History</span>
                 </button>
-                <button class="nav-btn" data-tab="templates">
-                    <span class="nav-icon">📋</span>
-                    <span class="nav-label">Templates</span>
+                <button class="nav-btn" data-tab="stores">
+                    <span class="nav-icon">🏪</span>
+                    <span class="nav-label">Stores</span>
                 </button>
                 <button class="nav-btn" data-tab="settings">
                     <span class="nav-icon">⚙️</span>
