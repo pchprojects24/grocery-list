@@ -52,9 +52,14 @@ const state = {
     isAllowed: false, // Computed permission
     lists: [], // Active lists snapshot
     activeListId: null, // Currently viewing list ID
+    activeListStoreId: null, // Store associated with active list
+    stores: [], // All stores
+    activeStoreId: null, // Currently editing store
+    currentItemsSnapshot: null, // Cache for re-rendering items
     unsubscribeLists: null,
     unsubscribeItems: null,
-    unsubscribeAllowed: null
+    unsubscribeAllowed: null,
+    unsubscribeStores: null
 };
 
 // --- DOM ELEMENTS ---
@@ -84,6 +89,7 @@ const dom = {
             home: document.getElementById('tab-home'),
             history: document.getElementById('tab-history'),
             templates: document.getElementById('tab-templates'),
+            stores: document.getElementById('tab-stores'),
             settings: document.getElementById('tab-settings')
         }
     },
@@ -96,7 +102,19 @@ const dom = {
         container: document.getElementById('list-items-container'),
         quickAdd: document.getElementById('quick-add-input'),
         btnAdd: document.getElementById('btn-quick-add'),
-        search: document.getElementById('item-search')
+        search: document.getElementById('item-search'),
+        storeSelect: document.getElementById('list-store-select'),
+        sectionSelect: document.getElementById('quick-add-section')
+    },
+    stores: {
+        container: document.getElementById('stores-container'),
+        newName: document.getElementById('new-store-name'),
+        btnCreate: document.getElementById('btn-create-store'),
+        detailView: document.getElementById('view-store-detail'),
+        detailName: document.getElementById('store-detail-name'),
+        sectionsContainer: document.getElementById('store-sections-container'),
+        newSectionInput: document.getElementById('new-section-input'),
+        btnAddSection: document.getElementById('btn-add-section')
     },
     settings: {
         email: document.getElementById('settings-email'),
@@ -209,13 +227,16 @@ function initApp() {
     setupNavigation();
     subscribeLists();
     subscribeHistory();
+    subscribeStores();
     renderTemplates();
+    setupStoreEvents();
 }
 
 function cleanupListeners() {
     if (state.unsubscribeLists) state.unsubscribeLists();
     if (state.unsubscribeItems) state.unsubscribeItems();
     if (state.unsubscribeAllowed) state.unsubscribeAllowed();
+    if (state.unsubscribeStores) state.unsubscribeStores();
 }
 
 // --- NAVIGATION ---
@@ -234,7 +255,8 @@ function setupNavigation() {
     });
 
     dom.nav.back.addEventListener('click', () => {
-        if (!dom.views.listDetail.classList.contains('hidden')) closeListDetail();
+        if (!dom.stores.detailView.classList.contains('hidden')) closeStoreDetail();
+        else if (!dom.views.listDetail.classList.contains('hidden')) closeListDetail();
     });
 
     dom.nav.menu.addEventListener('click', handleMenuAction);
@@ -251,6 +273,7 @@ function switchTab(tabName) {
     if (tabName === 'home') dom.nav.title.textContent = "Young Lists";
     else if (tabName === 'history') dom.nav.title.textContent = "History";
     else if (tabName === 'templates') dom.nav.title.textContent = "Templates";
+    else if (tabName === 'stores') dom.nav.title.textContent = "My Stores";
     else if (tabName === 'settings') dom.nav.title.textContent = "Settings";
 
     dom.nav.back.classList.add('hidden');
@@ -339,16 +362,28 @@ function showListActions(listData) {
 
 // --- LIST DETAIL VIEW ---
 
-function openList(listId, listName) {
+async function openList(listId, listName) {
     state.activeListId = listId;
     dom.nav.title.textContent = listName;
     dom.views.listDetail.classList.remove('hidden');
     dom.nav.back.classList.remove('hidden');
     dom.nav.menu.classList.remove('hidden');
 
+    // Load list doc to get associated store
+    const listDoc = await getDoc(doc(db, 'lists', listId));
+    const listData = listDoc.exists() ? listDoc.data() : {};
+    state.activeListStoreId = listData.storeId || '';
+
+    // Populate store selector
+    populateStoreSelect(dom.list.storeSelect, state.activeListStoreId);
+    populateSectionSelect();
+
     const q = query(collection(db, 'lists', listId, 'items'), orderBy('createdAt', 'asc'));
     if (state.unsubscribeItems) state.unsubscribeItems();
-    state.unsubscribeItems = onSnapshot(q, (snapshot) => { renderItems(snapshot); });
+    state.unsubscribeItems = onSnapshot(q, (snapshot) => {
+        state.currentItemsSnapshot = snapshot;
+        renderItems(snapshot);
+    });
 }
 
 function closeListDetail() {
@@ -364,48 +399,85 @@ function renderItems(snapshot) {
     dom.list.container.innerHTML = '';
     const searchTerm = dom.list.search.value.toLowerCase();
 
+    // Collect all items
+    const items = [];
     snapshot.forEach(docSnap => {
         const item = docSnap.data();
         item.id = docSnap.id;
-
         if (searchTerm && !item.text.toLowerCase().includes(searchTerm)) return;
-
-        const row = document.createElement('div');
-        row.className = `item-row ${item.checked ? 'item-checked' : ''}`;
-        row.innerHTML = `
-            <input type="checkbox" class="item-checkbox" ${item.checked ? 'checked' : ''}>
-            <div class="item-content">
-                <span class="item-text">${item.text}</span>
-                ${item.note ? `<span class="item-note">${item.note}</span>` : ''}
-            </div>
-            <button class="item-delete">×</button>
-        `;
-
-        row.querySelector('.item-checkbox').addEventListener('change', (e) => {
-            const checked = e.target.checked;
-            updateDoc(doc(db, 'lists', state.activeListId, 'items', item.id), {
-                checked: checked,
-                checkedAt: checked ? serverTimestamp() : null,
-                updatedAt: serverTimestamp()
-            });
-        });
-
-        row.querySelector('.item-delete').addEventListener('click', () => {
-            deleteDoc(doc(db, 'lists', state.activeListId, 'items', item.id));
-        });
-
-        dom.list.container.appendChild(row);
+        items.push(item);
     });
+
+    // Get store sections for sorting
+    const store = state.stores.find(s => s.id === state.activeListStoreId);
+
+    if (store && store.sections && store.sections.length > 0) {
+        // Sort items by store section order
+        const sectionOrder = {};
+        store.sections.forEach((s, i) => { sectionOrder[s.toLowerCase()] = i; });
+
+        items.sort((a, b) => {
+            const aSection = (a.section || '').toLowerCase();
+            const bSection = (b.section || '').toLowerCase();
+            const aOrder = aSection in sectionOrder ? sectionOrder[aSection] : 9999;
+            const bOrder = bSection in sectionOrder ? sectionOrder[bSection] : 9999;
+            return aOrder - bOrder;
+        });
+
+        // Group by section and render with headers
+        let currentSection = null;
+        items.forEach(item => {
+            const section = item.section || 'Unsorted';
+            if (section !== currentSection) {
+                currentSection = section;
+                const header = document.createElement('div');
+                header.className = 'section-header';
+                header.textContent = section;
+                dom.list.container.appendChild(header);
+            }
+            dom.list.container.appendChild(createItemRow(item));
+        });
+    } else {
+        // No store — render flat list
+        items.forEach(item => {
+            dom.list.container.appendChild(createItemRow(item));
+        });
+    }
+}
+
+function createItemRow(item) {
+    const row = document.createElement('div');
+    row.className = `item-row ${item.checked ? 'item-checked' : ''}`;
+    const sectionBadge = item.section ? `<span class="item-section-badge">${item.section}</span>` : '';
+    row.innerHTML = `
+        <input type="checkbox" class="item-checkbox" ${item.checked ? 'checked' : ''}>
+        <div class="item-content">
+            <span class="item-text">${item.text}</span>
+            ${sectionBadge}
+            ${item.note ? `<span class="item-note">${item.note}</span>` : ''}
+        </div>
+        <button class="item-delete">&times;</button>
+    `;
+
+    row.querySelector('.item-checkbox').addEventListener('change', (e) => {
+        const checked = e.target.checked;
+        updateDoc(doc(db, 'lists', state.activeListId, 'items', item.id), {
+            checked: checked,
+            checkedAt: checked ? serverTimestamp() : null,
+            updatedAt: serverTimestamp()
+        });
+    });
+
+    row.querySelector('.item-delete').addEventListener('click', () => {
+        deleteDoc(doc(db, 'lists', state.activeListId, 'items', item.id));
+    });
+
+    return row;
 }
 
 dom.list.search.addEventListener('input', () => {
-    const term = dom.list.search.value.toLowerCase();
-    const rows = dom.list.container.querySelectorAll('.item-row');
-    rows.forEach(row => {
-        const text = row.querySelector('.item-text').innerText.toLowerCase();
-        if (text.includes(term)) row.classList.remove('hidden');
-        else row.classList.add('hidden');
-    });
+    // Re-render from snapshot to properly filter with section grouping
+    if (state.currentItemsSnapshot) renderItems(state.currentItemsSnapshot);
 });
 
 dom.list.btnAdd.addEventListener('click', handleQuickAdd);
@@ -417,6 +489,8 @@ async function handleQuickAdd() {
     const raw = dom.list.quickAdd.value;
     if (!raw.trim()) return;
 
+    const section = dom.list.sectionSelect.value || '';
+
     // Split by comma
     const parts = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
 
@@ -425,6 +499,7 @@ async function handleQuickAdd() {
         const newRef = doc(collection(db, 'lists', state.activeListId, 'items'));
         batch.set(newRef, {
             text: text,
+            section: section,
             checked: false,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -498,6 +573,24 @@ async function completeTrip() {
         alert("Error: " + e.message);
     }
 }
+
+// --- STORE SELECTOR ON LIST ---
+dom.list.storeSelect.addEventListener('change', async () => {
+    if (!state.activeListId) return;
+    const storeId = dom.list.storeSelect.value;
+    state.activeListStoreId = storeId;
+
+    await updateDoc(doc(db, 'lists', state.activeListId), {
+        storeId: storeId,
+        updatedAt: serverTimestamp()
+    });
+
+    // Update section dropdown for quick-add
+    populateSectionSelect();
+
+    // Re-render items with new sort order
+    if (state.currentItemsSnapshot) renderItems(state.currentItemsSnapshot);
+});
 
 // --- HISTORY & ARCHIVE ---
 
@@ -578,6 +671,209 @@ function applyTemplate(t) {
         alert("List created!");
         switchTab('home');
     });
+}
+
+// --- STORES ---
+
+function subscribeStores() {
+    const q = query(collection(db, 'stores'), orderBy('createdAt', 'asc'));
+    if (state.unsubscribeStores) state.unsubscribeStores();
+
+    state.unsubscribeStores = onSnapshot(q, (snapshot) => {
+        state.stores = [];
+        dom.stores.container.innerHTML = '';
+
+        snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            data.id = docSnap.id;
+            state.stores.push(data);
+            dom.stores.container.appendChild(createStoreCard(data));
+        });
+    });
+}
+
+function setupStoreEvents() {
+    dom.stores.btnCreate.addEventListener('click', async () => {
+        const name = dom.stores.newName.value.trim();
+        if (!name) return;
+
+        await addDoc(collection(db, 'stores'), {
+            name: name,
+            sections: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+        dom.stores.newName.value = '';
+    });
+
+    dom.stores.btnAddSection.addEventListener('click', handleAddSection);
+    dom.stores.newSectionInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleAddSection();
+    });
+}
+
+function createStoreCard(data) {
+    const el = document.createElement('div');
+    el.className = 'list-card';
+    const sectionCount = (data.sections || []).length;
+    const sectionPreview = (data.sections || []).slice(0, 4).join(' > ');
+    el.innerHTML = `
+        <div class="list-info">
+            <span class="list-name">${data.name}</span>
+            <span class="store-card-sections">${sectionCount} sections${sectionPreview ? ': ' + sectionPreview + (sectionCount > 4 ? '...' : '') : ''}</span>
+        </div>
+        <button class="list-actions-btn">...</button>
+    `;
+
+    el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('list-actions-btn')) {
+            e.stopPropagation();
+            showStoreActions(data);
+        } else {
+            openStoreDetail(data.id, data.name);
+        }
+    });
+
+    return el;
+}
+
+function showStoreActions(storeData) {
+    const action = prompt(`Actions for "${storeData.name}":\nType "delete" or "rename"`);
+    if (action === 'delete') {
+        if (confirm("Delete this store layout?")) deleteDoc(doc(db, 'stores', storeData.id));
+    } else if (action === 'rename') {
+        const newName = prompt("New name:", storeData.name);
+        if (newName) updateDoc(doc(db, 'stores', storeData.id), { name: newName, updatedAt: serverTimestamp() });
+    }
+}
+
+function openStoreDetail(storeId, storeName) {
+    state.activeStoreId = storeId;
+    dom.stores.detailName.textContent = storeName;
+    dom.stores.detailView.classList.remove('hidden');
+    dom.nav.back.classList.remove('hidden');
+    dom.nav.title.textContent = storeName;
+
+    renderStoreSections();
+}
+
+function closeStoreDetail() {
+    state.activeStoreId = null;
+    dom.stores.detailView.classList.add('hidden');
+    dom.nav.back.classList.add('hidden');
+    switchTab('stores');
+}
+
+function renderStoreSections() {
+    const store = state.stores.find(s => s.id === state.activeStoreId);
+    if (!store) return;
+
+    dom.stores.sectionsContainer.innerHTML = '';
+    const sections = store.sections || [];
+
+    sections.forEach((section, index) => {
+        const row = document.createElement('div');
+        row.className = 'section-row';
+        row.innerHTML = `
+            <span class="section-order">${index + 1}</span>
+            <span class="section-name">${section}</span>
+            <div class="section-actions">
+                <button class="btn-move-up" title="Move up" ${index === 0 ? 'disabled' : ''}>&#9650;</button>
+                <button class="btn-move-down" title="Move down" ${index === sections.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                <button class="btn-section-delete" title="Remove">&times;</button>
+            </div>
+        `;
+
+        row.querySelector('.btn-move-up').addEventListener('click', () => moveSectionUp(index));
+        row.querySelector('.btn-move-down').addEventListener('click', () => moveSectionDown(index));
+        row.querySelector('.btn-section-delete').addEventListener('click', () => deleteSection(index));
+
+        dom.stores.sectionsContainer.appendChild(row);
+    });
+}
+
+async function handleAddSection() {
+    const name = dom.stores.newSectionInput.value.trim();
+    if (!name || !state.activeStoreId) return;
+
+    const store = state.stores.find(s => s.id === state.activeStoreId);
+    if (!store) return;
+
+    const sections = [...(store.sections || []), name];
+    await updateDoc(doc(db, 'stores', state.activeStoreId), {
+        sections: sections,
+        updatedAt: serverTimestamp()
+    });
+
+    dom.stores.newSectionInput.value = '';
+    dom.stores.newSectionInput.focus();
+
+    // Update local state and re-render
+    store.sections = sections;
+    renderStoreSections();
+}
+
+async function moveSectionUp(index) {
+    if (index === 0) return;
+    const store = state.stores.find(s => s.id === state.activeStoreId);
+    if (!store) return;
+
+    const sections = [...store.sections];
+    [sections[index - 1], sections[index]] = [sections[index], sections[index - 1]];
+
+    await updateDoc(doc(db, 'stores', state.activeStoreId), { sections, updatedAt: serverTimestamp() });
+    store.sections = sections;
+    renderStoreSections();
+}
+
+async function moveSectionDown(index) {
+    const store = state.stores.find(s => s.id === state.activeStoreId);
+    if (!store || index >= store.sections.length - 1) return;
+
+    const sections = [...store.sections];
+    [sections[index], sections[index + 1]] = [sections[index + 1], sections[index]];
+
+    await updateDoc(doc(db, 'stores', state.activeStoreId), { sections, updatedAt: serverTimestamp() });
+    store.sections = sections;
+    renderStoreSections();
+}
+
+async function deleteSection(index) {
+    const store = state.stores.find(s => s.id === state.activeStoreId);
+    if (!store) return;
+
+    const sections = store.sections.filter((_, i) => i !== index);
+    await updateDoc(doc(db, 'stores', state.activeStoreId), { sections, updatedAt: serverTimestamp() });
+    store.sections = sections;
+    renderStoreSections();
+}
+
+// --- STORE/SECTION HELPERS ---
+
+function populateStoreSelect(selectEl, selectedId) {
+    selectEl.innerHTML = '<option value="">No store (default order)</option>';
+    state.stores.forEach(store => {
+        const opt = document.createElement('option');
+        opt.value = store.id;
+        opt.textContent = store.name;
+        if (store.id === selectedId) opt.selected = true;
+        selectEl.appendChild(opt);
+    });
+}
+
+function populateSectionSelect() {
+    const select = dom.list.sectionSelect;
+    select.innerHTML = '<option value="">No section</option>';
+
+    const store = state.stores.find(s => s.id === state.activeListStoreId);
+    if (store && store.sections) {
+        store.sections.forEach(section => {
+            const opt = document.createElement('option');
+            opt.value = section;
+            opt.textContent = section;
+            select.appendChild(opt);
+        });
+    }
 }
 
 // --- SETTINGS ---
