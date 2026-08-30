@@ -3,355 +3,355 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!--
+      viewport-fit=cover gives us the iPhone safe-area insets.
+      Note there is deliberately no `maximum-scale` / `user-scalable=no`: pinch
+      zoom is an accessibility feature and disabling it fails WCAG 1.4.4.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Young Lists</title>
+    <meta name="description" content="A shared household grocery list for two phones.">
+
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Young Lists">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="stylesheet" href="styles.css">
 
-    <!-- 
-    ===================================================================
-    YOUNG HOUSEHOLD LISTS - SETUP INSTRUCTIONS
-    ===================================================================
-    1) Create Firebase Project at https://console.firebase.google.com/
-    2) Enable "Cloud Firestore" in the Firebase Console.
-       - Start in "Production mode".
-       - Go to "Rules" tab. (See security notes below).
-    3) Enable "Authentication" in the Firebase Console.
-       - Sign-in method: Enable "Email/Password".
-    4) **CRITICAL SECURITY STEP**: 
-       - Manually create a collection named `meta`.
-       - Create a document in `meta` with ID `allowedUsers`.
-       - Add a field named `uids` (type: Array).
-       - Add your (the owner's) User UID to this array. (You can get your UID from Auth tab after creating a user, or run the app, sign up, copy UID from console/settings, and paste it here from the Firebase Console).
-    5) Copy your Firebase Web Config object:
-       - Go to Project Settings -> General -> Your apps -> Add app (Web) -> Register.
-       - Copy the `firebaseConfig` object keys.
-       - Paste them into `app.js` where indicated.
-    6) Deploy to GitHub Pages (or any HTTPS host).
-       - Ensure `sw.js` is at the root.
-    7) Service Worker / PWA Notes:
-       - The app caches `index.html`, `styles.css`, `app.js`.
-       - To see code changes immediately during dev, use Incognito or "Update on reload" in DevTools Application tab.
-       - In prod, users will see an "Update available" toast when a new version is deployed.
-    
-    ===================================================================
-    FIRESTORE SECURITY RULES (Copy to Firebase Console -> Firestore -> Rules)
-    ===================================================================
-    rules_version = '2';
-    service cloud.firestore {
-      match /databases/{database}/documents {
-        
-        // Helper function to check if user is allowed
-        function isAllowed() {
-          return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/meta/allowedUsers).data.uids;
-        }
-
-        // Meta collection: Only allowed users can read. NO ONE can write from client (admin only).
-        match /meta/allowedUsers {
-          allow read: if request.auth != null; // Must read to check permissions
-          allow write: if false; // Admin console only
-        }
-
-        // Lists collection: Only allowed users can read/write
-        match /lists/{listId} {
-          allow read, write: if isAllowed();
-          
-          match /items/{itemId} {
-            allow read, write: if isAllowed();
-          }
-        }
-
-        // History collection: Only allowed users
-        match /history/{tripId} {
-          allow read, write: if isAllowed();
-
-          match /items/{itemId} {
-             allow read, write: if isAllowed();
-          }
-        }
-
-        // Stores collection: Only allowed users
-        match /stores/{storeId} {
-          allow read, write: if isAllowed();
-        }
-      }
-    }
-    ===================================================================
+    <!--
+      Setup lives in the docs, not in this file. See:
+        README.md            — what the app is and how to run it
+        docs/SUPABASE_SETUP.md — create the project, run the SQL, add the second person
+        supabase/migrations/ — the database itself (tables, RLS, realtime)
+      Fill in young-lists/config.js with your Supabase project URL and
+      publishable key. Never put a secret / service_role key in this directory.
     -->
 </head>
 
 <body>
 
-    <!-- APP SHELL -->
     <div id="app" class="app-container">
 
-        <!-- LOADING / SPLASH -->
-        <div id="view-loading" class="view view-active centered-content">
-            <div class="spinner"></div>
-            <p>Loading Young Lists...</p>
+        <!-- ============================== LOADING ============================== -->
+        <div id="view-loading" class="view centered-content">
+            <div class="spinner" role="status" aria-label="Loading"></div>
+            <p class="text-muted">Loading Young Lists…</p>
         </div>
 
-        <!-- AUTH SCREEN -->
-        <div id="view-auth" class="view centered-content hidden">
-            <h1>Young Lists</h1>
-            <p class="subtitle">Shared Household Shopping</p>
+        <!-- =========================== NEEDS SETUP ============================= -->
+        <div id="view-setup" class="view centered-content hidden">
+            <div class="icon-large" aria-hidden="true">🔧</div>
+            <h2>Setup needed</h2>
+            <p class="text-center text-muted">
+                This copy of Young Lists has not been connected to a Supabase project yet.
+            </p>
+            <ol class="setup-steps">
+                <li>Create a free project at supabase.com</li>
+                <li>Run the SQL in <code>supabase/migrations/</code></li>
+                <li>Put the project URL and publishable key in <code>young-lists/config.js</code></li>
+            </ol>
+            <p class="text-small text-center text-muted">
+                Full instructions are in <code>docs/SUPABASE_SETUP.md</code>.
+            </p>
+        </div>
 
-            <form id="auth-form" class="auth-form">
+        <!-- =============================== AUTH ================================ -->
+        <div id="view-auth" class="view centered-content hidden">
+            <h1 class="brand">Young Lists</h1>
+            <p class="subtitle">Shared household shopping</p>
+
+            <form id="auth-form" class="auth-form" novalidate>
                 <div class="input-group">
                     <label for="auth-email">Email</label>
-                    <input type="email" id="auth-email" placeholder="name@example.com" required autocomplete="email">
+                    <input type="email" id="auth-email" placeholder="name@example.com"
+                           autocomplete="email" autocapitalize="none" spellcheck="false" required>
                 </div>
                 <div class="input-group">
                     <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" placeholder="••••••••" required
-                        autocomplete="current-password">
+                    <input type="password" id="auth-password" placeholder="••••••••"
+                           autocomplete="current-password" required minlength="6">
                 </div>
-                <div id="auth-error" class="error-msg hidden"></div>
+
+                <p id="auth-error" class="error-msg hidden" role="alert"></p>
 
                 <div class="auth-buttons">
-                    <button type="submit" id="btn-signin" class="btn btn-primary">Sign In</button>
-                    <button type="button" id="btn-signup" class="btn btn-secondary">Create Account</button>
+                    <button type="submit" id="btn-signin" class="btn btn-primary">Sign in</button>
+                    <button type="button" id="btn-signup" class="btn btn-secondary">Create account</button>
                 </div>
+                <p class="text-small text-muted text-center mt-small">
+                    Each person in the household signs in with their own email and password.
+                </p>
             </form>
         </div>
 
-        <!-- ACCESS DENIED SCREEN -->
-        <div id="view-access-denied" class="view centered-content hidden">
-            <div class="icon-large">🔒</div>
-            <h2>Access Not Granted</h2>
-            <p class="text-center">Your User UID is not on the allowed list for this household.</p>
-            <div class="code-box" id="user-uid-display">Loading UID...</div>
-            <p class="text-small text-center">Send this code to the owner to add you in Settings.</p>
-            <button id="btn-logout-denied" class="btn btn-secondary">Sign Out</button>
+        <!-- ============================ ONBOARDING ============================= -->
+        <div id="view-onboarding" class="view centered-content hidden">
+            <h2>One more step</h2>
+            <p class="text-center text-muted">
+                Your lists live in a household. Start one, or join the one your partner already made.
+            </p>
+
+            <div class="onboard-card">
+                <h3>Start a household</h3>
+                <div class="input-row">
+                    <input type="text" id="onboard-household-name" placeholder="e.g. The Youngs" maxlength="80">
+                    <button id="btn-create-household" class="btn btn-primary btn-sm">Create</button>
+                </div>
+            </div>
+
+            <div class="onboard-divider"><span>or</span></div>
+
+            <div class="onboard-card">
+                <h3>Join with a code</h3>
+                <p class="text-small text-muted">
+                    Ask whoever set up the household for an invite code from their Settings screen.
+                </p>
+                <div class="input-row">
+                    <input type="text" id="onboard-join-code" placeholder="ABCD2345" maxlength="8"
+                           autocapitalize="characters" autocomplete="off" spellcheck="false"
+                           class="code-input">
+                    <button id="btn-join-household" class="btn btn-primary btn-sm">Join</button>
+                </div>
+            </div>
+
+            <button id="btn-logout-onboarding" class="btn btn-outline mt-large">Sign out</button>
         </div>
 
-        <!-- MAIN APP SCREENS (Tabbed) -->
+        <!-- =============================== MAIN ================================ -->
         <div id="view-main" class="view hidden">
 
-            <!-- HEADER -->
             <header class="app-header">
-                <div class="header-left">
-                    <button id="btn-back" class="icon-btn hidden">←</button>
+                <div class="header-side">
+                    <button id="btn-back" class="icon-btn hidden" type="button" aria-label="Back">←</button>
                 </div>
                 <h1 id="header-title">Young Lists</h1>
-                <div class="header-right">
-                    <button id="btn-menu" class="icon-btn hidden">…</button>
+                <div class="header-side header-right">
+                    <button id="btn-menu" class="icon-btn hidden" type="button" aria-label="More actions">⋯</button>
                 </div>
             </header>
 
-            <!-- CONTENT AREAS -->
+            <div id="offline-banner" class="offline-banner hidden" role="status">
+                Offline — you can read what is on screen, but changes will not save until you reconnect.
+            </div>
+
             <main class="app-content">
 
-                <!-- HOME TAB: DASHBOARD -->
-                <div id="tab-home" class="tab-content active">
-                    <div id="lists-container" class="card-grid">
-                        <!-- List Cards Injection -->
-                    </div>
+                <!-- ---------------------------- HOME ---------------------------- -->
+                <section id="tab-home" class="tab-content" aria-label="Lists">
+                    <div id="lists-container" class="card-grid"></div>
 
-                    <div class="create-list-panel">
-                        <h3>Create New List</h3>
+                    <div class="panel">
+                        <h3>New list</h3>
                         <div class="input-row">
-                            <input type="text" id="new-list-name" placeholder="E.g. Groceries, Target...">
+                            <input type="text" id="new-list-name" placeholder="e.g. Groceries" maxlength="80">
                             <button id="btn-create-list" class="btn btn-primary btn-sm">Create</button>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- HISTORY TAB -->
-                <div id="tab-history" class="tab-content hidden">
-                    <div class="section-title">Shopping History</div>
-                    <div id="history-container" class="list-vertical">
-                        <!-- History Items Injection -->
-                    </div>
+                <!-- --------------------------- HISTORY -------------------------- -->
+                <section id="tab-history" class="tab-content hidden" aria-label="History">
+                    <h2 class="section-title">Shopping trips</h2>
+                    <div id="history-container" class="list-vertical"></div>
 
-                    <div class="section-title mt-large">Archived Lists</div>
-                    <div id="archived-lists-container" class="card-grid">
-                        <!-- Archived Lists Injection -->
-                    </div>
-                </div>
+                    <h2 class="section-title mt-large">Archived lists</h2>
+                    <div id="archived-lists-container" class="card-grid"></div>
+                </section>
 
-                <!-- TEMPLATES TAB -->
-                <div id="tab-templates" class="tab-content hidden">
-                    <div class="section-title">Quick Starters</div>
-                    <div id="templates-container" class="card-grid">
-                        <!-- Templates Injection -->
-                    </div>
-                </div>
+                <!-- ---------------------------- STORES -------------------------- -->
+                <section id="tab-stores" class="tab-content hidden" aria-label="Stores">
+                    <h2 class="section-title">My stores</h2>
+                    <p class="text-muted text-small">
+                        Put each store's departments in the order you actually walk them. A list
+                        assigned to that store then sorts itself to match your route.
+                    </p>
+                    <div id="stores-container" class="card-grid"></div>
 
-                <!-- STORES TAB -->
-                <div id="tab-stores" class="tab-content hidden">
-                    <div class="section-title">My Stores</div>
-                    <p class="text-muted text-small">Map out your local stores by adding sections in walking order. Your grocery list will sort items to match your route through the store.</p>
-                    <div id="stores-container" class="card-grid">
-                        <!-- Store Cards Injection -->
-                    </div>
-
-                    <div class="create-list-panel mt-large">
-                        <h3>Add a Store</h3>
+                    <div class="panel mt-large">
+                        <h3>Add a store</h3>
                         <div class="input-row">
-                            <input type="text" id="new-store-name" placeholder="E.g. Kroger, Walmart, Costco...">
+                            <input type="text" id="new-store-name" placeholder="e.g. Costco, pharmacy…" maxlength="80">
                             <button id="btn-create-store" class="btn btn-primary btn-sm">Add</button>
                         </div>
+                        <p class="text-small text-muted mt-small">Starter layouts you can edit afterwards:</p>
+                        <div id="store-templates" class="chip-row"></div>
                     </div>
-                </div>
+                </section>
 
-                <!-- STORE DETAIL VIEW -->
-                <div id="view-store-detail" class="tab-content hidden overlay-view">
-                    <div class="store-detail-header">
-                        <h3 id="store-detail-name">Store Name</h3>
-                        <p class="text-muted text-small">Add sections/aisles in the order you walk through the store. Use the arrows to reorder.</p>
-                    </div>
-
-                    <div id="store-sections-container" class="sections-list">
-                        <!-- Sections Injection -->
-                    </div>
-
-                    <div class="quick-add-bar">
-                        <input type="text" id="new-section-input" placeholder="Add section (e.g. Produce, Dairy, Frozen)..." autocomplete="off">
-                        <button id="btn-add-section" class="btn-circle-add">+</button>
-                    </div>
-                </div>
-
-                <!-- SETTINGS TAB -->
-                <div id="tab-settings" class="tab-content hidden">
+                <!-- --------------------------- SETTINGS ------------------------- -->
+                <section id="tab-settings" class="tab-content hidden" aria-label="Settings">
                     <div class="settings-group">
                         <h3>Account</h3>
-                        <p id="settings-email" class="text-muted">...</p>
-                        <button id="btn-logout" class="btn btn-outline btn-full">Sign Out</button>
+                        <p id="settings-email" class="text-muted"></p>
+                        <button id="btn-logout" class="btn btn-outline btn-full">Sign out</button>
                     </div>
 
                     <div class="settings-group">
-                        <h3>Household Access</h3>
-                        <div class="field-label">My UID</div>
-                        <div class="copy-row">
-                            <code id="settings-my-uid">...</code>
-                            <button id="btn-copy-uid" class="btn-xs">Copy</button>
-                        </div>
-
-                        <div class="field-label mt-small">Allowed UIDs</div>
-                        <ul id="allowed-uids-list" class="simple-list">
-                            <!-- Allowed UIDs injection -->
-                        </ul>
-
-                        <div class="add-uid-row mt-small">
-                            <input type="text" id="new-allowed-uid" placeholder="Paste UID here">
-                            <button id="btn-add-uid" class="btn btn-primary btn-sm">Add</button>
-                        </div>
+                        <h3>Household</h3>
+                        <p id="settings-household" class="text-muted"></p>
+                        <ul id="members-list" class="simple-list"></ul>
+                        <div id="invite-area"></div>
                     </div>
 
                     <div class="settings-group">
                         <h3>App</h3>
                         <div class="flex-row-between">
                             <span>Version</span>
-                            <span class="text-muted">v0.1</span>
+                            <span id="settings-version" class="text-muted"></span>
                         </div>
-                        <button id="btn-check-update" class="btn btn-outline btn-full mt-small">Check for updates /
-                            Refresh</button>
+                        <div class="flex-row-between mt-small">
+                            <span>Live sync</span>
+                            <span id="settings-realtime" class="text-muted">connecting…</span>
+                        </div>
+                        <button id="btn-check-update" class="btn btn-outline btn-full mt-small">
+                            Check for updates
+                        </button>
                     </div>
-                </div>
+                </section>
 
-                <!-- LIST DETAIL VIEW (Full screen overlay style inside main) -->
-                <div id="view-list-detail" class="tab-content hidden overlay-view">
-
+                <!-- ------------------------- LIST DETAIL ------------------------ -->
+                <section id="view-list-detail" class="tab-content hidden overlay-view" aria-label="List">
                     <div class="list-toolbar">
                         <div class="toolbar-row">
-                            <div class="search-bar" style="flex:1">
-                                <input type="text" id="item-search" placeholder="Search items...">
-                            </div>
+                            <input type="search" id="item-search" class="search-input"
+                                   placeholder="Search this list…" autocomplete="off">
                         </div>
-                        <div class="toolbar-row store-selector-row">
-                            <label class="text-small text-muted">Store route:</label>
+                        <div class="toolbar-row">
+                            <label class="text-small text-muted" for="list-store-select">Store route</label>
                             <select id="list-store-select" class="store-select">
-                                <option value="">No store (default order)</option>
+                                <option value="">No store — order added</option>
                             </select>
                         </div>
                     </div>
 
-                    <div id="list-items-container" class="items-list">
-                        <!-- Items Injection -->
-                    </div>
+                    <div id="quick-picks" class="chip-row quick-picks hidden"></div>
+
+                    <div id="list-items-container" class="items-list"></div>
 
                     <div class="quick-add-bar">
-                        <select id="quick-add-section" class="section-select" title="Section">
+                        <select id="quick-add-section" class="section-select" aria-label="Section for new items">
                             <option value="">No section</option>
                         </select>
-                        <input type="text" id="quick-add-input" placeholder="Type items (comma for multiple)..."
-                            autocomplete="off">
-                        <button id="btn-quick-add" class="btn-circle-add">+</button>
+                        <input type="text" id="quick-add-input" list="catalog-suggestions"
+                               placeholder="Add item (comma for several)…"
+                               autocomplete="off" autocapitalize="sentences" enterkeyhint="done">
+                        <datalist id="catalog-suggestions"></datalist>
+                        <button id="btn-quick-add" class="btn-circle-add" type="button" aria-label="Add item">+</button>
                     </div>
-                </div>
+                </section>
+
+                <!-- ------------------------ STORE DETAIL ------------------------ -->
+                <section id="view-store-detail" class="tab-content hidden overlay-view" aria-label="Store">
+                    <div class="detail-header">
+                        <h2 id="store-detail-name"></h2>
+                        <p class="text-muted text-small">
+                            Sections in walking order. Use ▲ ▼ to match your route through the store.
+                        </p>
+                    </div>
+                    <div id="store-sections-container" class="sections-list"></div>
+
+                    <div class="quick-add-bar">
+                        <input type="text" id="new-section-input" maxlength="60"
+                               placeholder="Add section (Produce, Dairy…)" autocomplete="off" enterkeyhint="done">
+                        <button id="btn-add-section" class="btn-circle-add" type="button" aria-label="Add section">+</button>
+                    </div>
+                </section>
+
+                <!-- ------------------------- TRIP DETAIL ------------------------ -->
+                <section id="view-trip-detail" class="tab-content hidden overlay-view" aria-label="Shopping trip">
+                    <div class="detail-header">
+                        <h2 id="trip-detail-name"></h2>
+                        <p id="trip-detail-meta" class="text-muted text-small"></p>
+                    </div>
+                    <div id="trip-items-container" class="items-list"></div>
+                    <div class="detail-footer">
+                        <button id="btn-add-all-again" class="btn btn-primary btn-full" type="button">
+                            Add everything to a list again
+                        </button>
+                    </div>
+                </section>
 
             </main>
 
-            <!-- BOTTOM NAVIGATION -->
-            <nav id="bottom-nav" class="bottom-nav">
-                <button class="nav-btn active" data-tab="home">
-                    <span class="nav-icon">🏠</span>
-                    <span class="nav-label">Home</span>
+            <nav id="bottom-nav" class="bottom-nav" aria-label="Main">
+                <button class="nav-btn active" type="button" data-tab="home">
+                    <span class="nav-icon" aria-hidden="true">🏠</span><span class="nav-label">Lists</span>
                 </button>
-                <button class="nav-btn" data-tab="history">
-                    <span class="nav-icon">📜</span>
-                    <span class="nav-label">History</span>
+                <button class="nav-btn" type="button" data-tab="history">
+                    <span class="nav-icon" aria-hidden="true">🧾</span><span class="nav-label">History</span>
                 </button>
-                <button class="nav-btn" data-tab="stores">
-                    <span class="nav-icon">🏪</span>
-                    <span class="nav-label">Stores</span>
+                <button class="nav-btn" type="button" data-tab="stores">
+                    <span class="nav-icon" aria-hidden="true">🏪</span><span class="nav-label">Stores</span>
                 </button>
-                <button class="nav-btn" data-tab="settings">
-                    <span class="nav-icon">⚙️</span>
-                    <span class="nav-label">Settings</span>
+                <button class="nav-btn" type="button" data-tab="settings">
+                    <span class="nav-icon" aria-hidden="true">⚙️</span><span class="nav-label">Settings</span>
                 </button>
             </nav>
-
         </div>
     </div>
 
-    <!-- TOAST / NOTIFICATION -->
-    <div id="toast-container" class="toast-container">
-        <div id="update-toast" class="toast hidden">
-            <span>🚀 New version available!</span>
-            <button id="btn-refresh-worker">Refresh</button>
-        </div>
+    <div id="toast-host" class="toast-host"></div>
+    <dialog id="app-dialog" class="app-dialog"></dialog>
+
+    <div id="update-toast" class="toast toast-update hidden">
+        <span class="toast-text">A new version is ready.</span>
+        <button id="btn-refresh-worker" class="toast-action" type="button">Reload</button>
     </div>
 
-    <!-- Firebase SDKs (using CDN for vanilla JS simplicity) -->
-    <!-- COMPAT: using compat libraries for simpler syntax in vanilla JS if desired, or modular. 
-         Let's use Modular v9+ script tags (module). -->
-    <script type="module" src="app.js"></script>
+    <!-- Third-party, vendored so the app shell works offline. See vendor/README.md. -->
+    <script src="vendor/supabase-js-2.112.4.umd.js"></script>
+    <script type="module" src="js/app.js"></script>
 
-    <!-- Service Worker Registration -->
     <script>
+        // ---------------------------------------------------------------------
+        // Service worker registration and update handling.
+        //
+        // The worker is network-first (see sw.js), so a deploy is picked up on
+        // the next load rather than being pinned until storage is cleared. When
+        // a new worker is waiting we offer a reload instead of swapping code
+        // underneath a half-finished edit.
+        // ---------------------------------------------------------------------
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(registration => {
-                    console.log('SW registered: ', registration);
-
-                    // Check for updates
-                    registration.addEventListener('updatefound', () => {
-                        const newWorker = registration.installing;
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                // New update available
-                                const toast = document.getElementById('update-toast');
-                                if (toast) toast.classList.remove('hidden');
-                            }
-                        });
-                    });
-                }).catch(registrationError => {
-                    console.log('SW registration failed: ', registrationError);
-                });
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloading) return;
+                reloading = true;
+                window.location.reload();
             });
 
-            // Handle refresh button
-            document.getElementById('btn-refresh-worker')?.addEventListener('click', () => {
-                if (navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
-                    window.location.reload();
-                }
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then((registration) => {
+                    const toast = document.getElementById('update-toast');
+                    const offerUpdate = (worker) => {
+                        if (!worker) return;
+                        worker.addEventListener('statechange', () => {
+                            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                                toast.classList.remove('hidden');
+                                document.getElementById('btn-refresh-worker').onclick = () => {
+                                    worker.postMessage({ type: 'SKIP_WAITING' });
+                                };
+                            }
+                        });
+                    };
+                    if (registration.waiting && navigator.serviceWorker.controller) {
+                        toast.classList.remove('hidden');
+                        document.getElementById('btn-refresh-worker').onclick = () => {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        };
+                    }
+                    registration.addEventListener('updatefound', () => offerUpdate(registration.installing));
+
+                    // Ask the browser to look for a new worker when the app is
+                    // brought back to the foreground, which on iOS is the common
+                    // way a home-screen PWA is "opened".
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible') registration.update();
+                    });
+                }).catch((error) => console.warn('[young-lists] SW registration failed', error));
             });
         }
     </script>
