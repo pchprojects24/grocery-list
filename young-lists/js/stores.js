@@ -197,7 +197,6 @@ export function renderStoreDetail() {
   }
 
   updateOverlayHeader(storeLabel(store), () => storeActions(currentStore()));
-  $('store-detail-name').textContent = storeLabel(store);
 
   const sections = store.sections;
   const container = $('store-sections-container');

@@ -19,9 +19,21 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright');
+
+// Playwright and Chromium are found in whatever way this machine provides them:
+// the pre-installed browser in the dev container, or a locally installed
+// playwright package in CI.
+function chromiumPath() {
+  const explicit = process.env.CHROMIUM_PATH;
+  if (explicit) return explicit;
+  const bundled = '/opt/pw-browsers/chromium';
+  return existsSync(bundled) ? bundled : undefined;   // undefined = let Playwright decide
+}
+
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -117,7 +129,7 @@ async function main() {
 
   const browser = await chromium.launch({
     headless: !process.argv.includes('--headed'),
-    executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium'
+    executablePath: chromiumPath()
   });
 
   const context = await browser.newContext({

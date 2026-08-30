@@ -3,7 +3,7 @@
 // =============================================================================
 // Responsibilities, and nothing else:
 //   * decide which top-level screen to show (setup / auth / onboarding / main),
-//   * wire the navigation bar and the hardware-ish back button,
+//   * wire the navigation bar and the in-app back button,
 //   * wire every module's listeners exactly once,
 //   * start and stop the realtime subscription as the session changes.
 //
@@ -126,12 +126,10 @@ function initNavigation() {
 
   $('btn-back').addEventListener('click', () => closeOverlay());
 
-  // Android hardware back / browser back closes an overlay before leaving.
-  history.replaceState({ depth: 0 }, '');
-  window.addEventListener('popstate', () => {
-    if (!closeOverlay()) return;
-    history.pushState({ depth: 0 }, '');
-  });
+  // Note: the browser/Android back button is deliberately NOT wired to close an
+  // overlay. Every scheme for that either traps the user in the app or pops one
+  // entry too many, and the app has its own back button in the header. On iOS,
+  // where this is used, a standalone PWA has no back button anyway.
 }
 
 // -----------------------------------------------------------------------------

@@ -567,7 +567,14 @@ button:focus-visible,
     flex-shrink: 0;
 }
 .quick-add-bar input { flex: 1; }
-.section-select { flex: 0 0 33%; max-width: 140px; }
+/* Wide enough for "No section" and a section name without clipping. */
+.section-select {
+    flex: 0 0 auto;
+    width: 132px;
+    padding-left: 10px;
+    padding-right: 4px;
+    font-size: 16px;
+}
 
 .btn-circle-add {
     width: 48px;
@@ -743,7 +750,9 @@ button:focus-visible,
 .toast-host {
     position: fixed;
     left: 0; right: 0;
-    bottom: calc(var(--nav-height) + var(--safe-bottom) + var(--spacing-sm));
+    /* Clears the quick-add bar, which is the one control a toast must never
+       cover while someone is mid-shop. */
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 72px);
     display: flex;
     justify-content: center;
     padding: 0 var(--spacing-md);
@@ -785,7 +794,7 @@ button:focus-visible,
     position: fixed;
     left: var(--spacing-md);
     right: var(--spacing-md);
-    bottom: calc(var(--nav-height) + var(--safe-bottom) + var(--spacing-lg) * 2);
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 128px);
     margin: 0 auto;
     max-width: 560px;
     z-index: 210;
