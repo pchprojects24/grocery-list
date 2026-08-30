@@ -181,14 +181,7 @@
     }
     if (q._limit) result = result.slice(0, q._limit);
 
-    // Embedded selects the app uses.
-    if (q._table === 'shopping_lists' && q._select.includes('list_items')) {
-      result = result.map((list) => ({
-        ...list,
-        list_items: db.list_items.filter((i) => i.list_id === list.id)
-          .map((i) => ({ id: i.id, checked: i.checked }))
-      }));
-    }
+    // The one embedded select the app uses.
     if (q._table === 'household_members' && q._select.includes('households')) {
       result = result.map((member) => ({
         ...member,

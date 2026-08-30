@@ -187,6 +187,7 @@ Worth five minutes before you rely on it:
 | "You do not have permission to do that" | Your user is not in the household that owns the row. Check `household_members` |
 | Changes do not appear on the other phone | Check **Database → Publications**; re-run `0007_realtime.sql` |
 | Everything 401s after a while | The session expired. Sign out and back in |
+| An action fails with "Could not find the function" | PostgREST has a stale schema cache. Run `NOTIFY pgrst, 'reload schema';` in the SQL editor |
 
 Console logs are safe to share when asking for help: the app deliberately never
 logs passwords, tokens or keys.

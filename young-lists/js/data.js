@@ -105,22 +105,36 @@ export async function loadStores() {
 
 export async function loadLists() {
   if (!state.household) return [];
-  const { data, error } = await supabase
-    .from('shopping_lists')
-    .select('*, list_items ( id, checked )')
-    .eq('household_id', state.household.id)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
 
-  const withCounts = (data || []).map((list) => {
-    const items = list.list_items || [];
-    return {
-      ...list,
-      list_items: undefined,
-      total_count: items.length,
-      remaining_count: items.filter((i) => !i.checked).length
-    };
+  // Two queries rather than one embedded select. PostgREST can embed related
+  // rows, but list_items is joined to shopping_lists by a *composite* key
+  // (list_id, household_id); asking for the count separately keeps this working
+  // regardless of how well that relationship is inferred, and the row count is
+  // tiny at household scale.
+  const [{ data: lists, error: listError }, { data: items, error: itemError }] =
+    await Promise.all([
+      supabase.from('shopping_lists').select('*')
+        .eq('household_id', state.household.id)
+        .order('updated_at', { ascending: false }),
+      supabase.from('list_items').select('list_id, checked')
+        .eq('household_id', state.household.id)
+    ]);
+  if (listError) throw listError;
+  if (itemError) throw itemError;
+
+  const counts = new Map();
+  for (const item of items || []) {
+    const entry = counts.get(item.list_id) || { total: 0, remaining: 0 };
+    entry.total += 1;
+    if (!item.checked) entry.remaining += 1;
+    counts.set(item.list_id, entry);
+  }
+
+  const withCounts = (lists || []).map((list) => {
+    const count = counts.get(list.id) || { total: 0, remaining: 0 };
+    return { ...list, total_count: count.total, remaining_count: count.remaining };
   });
+
   state.lists = withCounts.filter((l) => !l.is_archived);
   state.archivedLists = withCounts.filter((l) => l.is_archived);
   emit('lists');
