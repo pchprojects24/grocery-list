@@ -68,7 +68,7 @@ young-lists/                the deployed application
     settings.js             account, members, invite codes, app info
 
 supabase/
-  migrations/               the database, in order. The source of truth.
+  migrations/               the database, in order (0001-0008). The source of truth.
   schema.sql                generated concatenation, for one-shot pasting
   build_schema.sh           regenerates schema.sql
   tests/                    the SQL test suite and its local Supabase stand-in

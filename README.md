@@ -53,10 +53,13 @@ subscription.
 
 ## Getting started
 
-1. **[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md)** — create the free
-   project, run the SQL, fill in `young-lists/config.js`, add the second
-   person. This is the only setup document; if anything else disagrees with it,
-   it is stale.
+The Supabase project is already made and `young-lists/config.js` already points
+at it, so there is less to do than there looks:
+
+1. **[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md)** — check the auth
+   settings, then make your household and invite the other person. It also has
+   the full from-scratch instructions if you ever want your own project. This is
+   the only setup document; if anything else disagrees with it, it is stale.
 2. **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** — GitHub Pages, Netlify,
    Vercel, or a folder on any web server.
 

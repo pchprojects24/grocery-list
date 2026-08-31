@@ -3,6 +3,16 @@
 **This file is the single source of truth for the backend.** If any other
 document disagrees with it, this one is right and the other one is stale.
 
+> **Already done for the `young-lists` project.** A Supabase project called
+> `young-lists` (`qxxhzvbwkcxhmlzwriuq`, ca-central-1, free tier) exists with
+> every migration applied, and `young-lists/config.js` already points at it.
+> Steps 1-4, 6, 7 and 8 are complete; pick up at **step 5** to check the auth
+> settings, then **step 9** to make your household.
+>
+> Follow the whole thing from the top only if you are setting up a *different*
+> project — a second one for development, say, or because you would rather own
+> the project yourself.
+
 You do this once. It takes about fifteen minutes and costs nothing — a
 two-person grocery list sits comfortably inside Supabase's free tier.
 
@@ -62,6 +72,7 @@ filename order:
 | `0005_rls.sql` | grants and every Row Level Security policy |
 | `0006_functions.sql` | the RPCs the app calls |
 | `0007_realtime.sql` | publishes the tables that need live sync |
+| `0008_trigger_function_grants.sql` | stops the trigger functions being reachable as REST endpoints |
 
 Each one prints `Success. No rows returned`.
 
@@ -188,6 +199,21 @@ Worth five minutes before you rely on it:
 | Changes do not appear on the other phone | Check **Database → Publications**; re-run `0007_realtime.sql` |
 | Everything 401s after a while | The session expired. Sign out and back in |
 | An action fails with "Could not find the function" | PostgREST has a stale schema cache. Run `NOTIFY pgrst, 'reload schema';` in the SQL editor |
+
+## Checking it over yourself
+
+Supabase has a built-in linter: **Advisors → Security Advisor** in the
+dashboard. On a correctly migrated project it reports five warnings, all of the
+same kind — "Signed-In Users Can Execute SECURITY DEFINER Function", for
+`create_household`, `create_household_invite`, `redeem_household_invite`,
+`is_household_member` and `is_household_owner`.
+
+**Those five are intentional and must not be "fixed".** They are the functions
+that deliberately run with elevated rights, and each one re-checks the caller on
+its first lines — see [`../SECURITY.md`](../SECURITY.md). Switching them to
+`SECURITY INVOKER` would break household creation and joining outright.
+
+Anything *else* the advisor reports is worth looking at.
 
 Console logs are safe to share when asking for help: the app deliberately never
 logs passwords, tokens or keys.

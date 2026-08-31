@@ -22,8 +22,8 @@
 // Anything in this directory is served to the public web verbatim.
 // -----------------------------------------------------------------------------
 
-export const SUPABASE_URL = "";
-export const SUPABASE_PUBLISHABLE_KEY = "";
+export const SUPABASE_URL = "https://qxxhzvbwkcxhmlzwriuq.supabase.co";
+export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FfQw5rueCOdqY4duMvUIhA_dxEtL5iu";
 
 // Shown in Settings and used to tell users which build they are running.
 export const APP_VERSION = "2.0.0";

@@ -91,6 +91,25 @@ data to migrate.
 - **`tools/make_icons.py`** to regenerate the PWA icons from the standard
   library alone.
 
+### Verified against a live Supabase project
+
+The migrations were applied to a real Supabase project (PostgreSQL 17) and
+checked with Supabase's own security advisor, which found one genuine defect:
+
+- **Trigger functions were reachable as REST endpoints.** PostgreSQL grants
+  `EXECUTE` to `PUBLIC` by default and PostgREST exposes every function in the
+  `public` schema as an RPC, so `/rest/v1/rpc/touch_parent_list` answered to a
+  signed-out caller. `0006` had revoked that default only for the ten functions
+  the app calls. There was no exploit — PostgreSQL refuses to run a
+  `trigger`-returning function outside a trigger — but the grant was wrong.
+  `0008_trigger_function_grants.sql` closes it, and the suite now asserts that
+  no function in `public` is executable by `anon` and no trigger function is
+  executable at all.
+
+The advisor's five remaining warnings are the intentional `SECURITY DEFINER`
+functions, each of which re-checks its caller; `SECURITY.md` records why they
+must stay that way.
+
 ### Changed
 
 - `app.js` split into focused modules under `young-lists/js/`.

@@ -20,9 +20,16 @@
 \timing off
 
 -- -----------------------------------------------------------------------------
--- Assertion helper
+-- Test harness.
+--
+-- Everything the harness needs lives in its own `test` schema, never in
+-- `public`. Section 9 audits `public` for functions an unauthenticated caller
+-- could reach, and a stray helper there would either mask a real problem or
+-- report itself as one.
 -- -----------------------------------------------------------------------------
-create or replace function public._assert(p_ok boolean, p_label text)
+create schema if not exists test;
+
+create or replace function test._assert(p_ok boolean, p_label text)
 returns void language plpgsql as $$
 begin
   if p_ok is not true then
@@ -38,8 +45,8 @@ $$;
 -- captured with \gset are parked in this table and read back with test.id().
 -- It lives outside `public` so the privilege audit in section 9 stays honest.
 -- -----------------------------------------------------------------------------
-create schema if not exists test;
 grant usage on schema test to authenticated, anon;
+grant execute on function test._assert(boolean, text) to authenticated, anon;
 create table if not exists test.ctx (k text primary key, v text);
 grant select, insert, update, delete on test.ctx to authenticated, anon;
 
@@ -88,10 +95,10 @@ select public.create_household('Young Household') as hh \gset
 select test.put('hh', :'hh') as _ \gset
 
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 1 from public.households),
     'alice sees exactly one household');
-  perform public._assert(
+  perform test._assert(
     (select role = 'owner' from public.household_members
       where user_id = auth.uid()),
     'alice is the owner of the household she created');
@@ -100,9 +107,9 @@ end $$;
 -- Mallory is authenticated but belongs to nothing.
 set request.jwt.claim.sub = :'mallory';
 do $$ begin
-  perform public._assert((select count(*) = 0 from public.households),
+  perform test._assert((select count(*) = 0 from public.households),
     'mallory sees no households');
-  perform public._assert((select count(*) = 0 from public.household_members),
+  perform test._assert((select count(*) = 0 from public.household_members),
     'mallory sees no membership rows');
 end $$;
 
@@ -122,7 +129,7 @@ begin
       (select id from public.households limit 1));
     raise exception 'FAILED: mallory minted an invite';
   exception when insufficient_privilege or null_value_not_allowed then
-    perform public._assert(true, 'mallory cannot create an invite code');
+    perform test._assert(true, 'mallory cannot create an invite code');
   end;
 end $$;
 
@@ -131,8 +138,8 @@ select public.create_household_invite(test.id('hh'), 24, 1) as code \gset
 select test.put('code', :'code') as _ \gset
 
 do $$ begin
-  perform public._assert(test.val('code') ~ '^[A-Z0-9]{8}$', 'invite code is 8 chars A-Z0-9');
-  perform public._assert(
+  perform test._assert(test.val('code') ~ '^[A-Z0-9]{8}$', 'invite code is 8 chars A-Z0-9');
+  perform test._assert(
     (select count(*) = 1 from public.household_invites),
     'owner can read her own household invites');
 end $$;
@@ -140,7 +147,7 @@ end $$;
 -- Mallory cannot enumerate invite codes even though the row exists.
 set request.jwt.claim.sub = :'mallory';
 do $$ begin
-  perform public._assert((select count(*) = 0 from public.household_invites),
+  perform test._assert((select count(*) = 0 from public.household_invites),
     'a non-member cannot read invite codes');
 end $$;
 
@@ -150,7 +157,7 @@ do $$ begin
     perform public.redeem_household_invite('ZZZZZZZZ');
     raise exception 'FAILED: an invalid code was accepted';
   exception when invalid_parameter_value then
-    perform public._assert(true, 'an invalid invite code is rejected');
+    perform test._assert(true, 'an invalid invite code is rejected');
   end;
 end $$;
 
@@ -158,12 +165,12 @@ end $$;
 set request.jwt.claim.sub = :'bob';
 do $$ begin
   perform public.redeem_household_invite(test.val('code'));
-  perform public._assert(
+  perform test._assert(
     (select role = 'member' from public.household_members where user_id = auth.uid()),
     'bob joined the household as a member');
-  perform public._assert((select count(*) = 1 from public.households),
+  perform test._assert((select count(*) = 1 from public.households),
     'bob can now see the household');
-  perform public._assert((select count(*) = 2 from public.household_members),
+  perform test._assert((select count(*) = 2 from public.household_members),
     'bob can see both members of his household');
 end $$;
 
@@ -174,7 +181,7 @@ do $$ begin
     perform public.redeem_household_invite(test.val('code'));
     raise exception 'FAILED: a spent invite code was accepted again';
   exception when invalid_parameter_value then
-    perform public._assert(true, 'a spent invite code cannot be reused');
+    perform test._assert(true, 'a spent invite code cannot be reused');
   end;
 end $$;
 
@@ -198,15 +205,15 @@ select public.create_store_with_sections(
 select test.put('sobeys', :'sobeys') as _ \gset
 
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 9 from public.store_sections where store_id = test.id('superstore')),
     'Atlantic Superstore has 9 sections');
-  perform public._assert(
+  perform test._assert(
     (select string_agg(name, '>' order by sort_order)
        from public.store_sections where store_id = test.id('superstore'))
     = 'Produce>Bakery>Deli>Meat>Pantry>Dairy>Frozen>Household>Checkout',
     'Superstore sections are stored in the order they were given');
-  perform public._assert(
+  perform test._assert(
     (select string_agg(name, '>' order by sort_order)
        from public.store_sections where store_id = test.id('sobeys'))
     = 'Bakery>Produce>Dairy>Deli>Meat>Frozen>Pantry>Checkout',
@@ -224,7 +231,7 @@ begin
 
   perform public.reorder_store_sections(test.id('superstore'), v_ids);
 
-  perform public._assert(
+  perform test._assert(
     (select name from public.store_sections
       where store_id = test.id('superstore') order by sort_order limit 1) = 'Dairy',
     'reorder_store_sections moves Dairy to the front');
@@ -237,7 +244,7 @@ begin
   select id into v_id from public.store_sections
    where store_id = test.id('superstore') and name = 'Produce';
   update public.store_sections set name = 'Fruit & Veg' where id = v_id;
-  perform public._assert(
+  perform test._assert(
     (select name from public.store_sections where id = v_id) = 'Fruit & Veg',
     'a section can be renamed and keeps its id');
   update public.store_sections set name = 'Produce' where id = v_id;
@@ -255,7 +262,7 @@ returning id as list_id \gset
 select test.put('list_id', :'list_id') as _ \gset
 
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select created_by from public.shopping_lists where id = test.id('list_id')) = auth.uid(),
     'created_by is stamped from the JWT, not the client');
 end $$;
@@ -270,8 +277,8 @@ select public.add_items_to_list(test.id('list_id'), jsonb_build_array(
 select test.put('r1', :'r1') as _ \gset
 
 do $$ begin
-  perform public._assert((test.val('r1')::jsonb ->> 'added')::int = 4, 'four items added');
-  perform public._assert((select count(*) = 4 from public.list_items
+  perform test._assert((test.val('r1')::jsonb ->> 'added')::int = 4, 'four items added');
+  perform test._assert((select count(*) = 4 from public.list_items
                            where list_id = test.id('list_id')), 'list has four items');
 end $$;
 
@@ -281,12 +288,12 @@ select public.add_items_to_list(test.id('list_id'),
 select test.put('r2', :'r2') as _ \gset
 
 do $$ begin
-  perform public._assert((test.val('r2')::jsonb ->> 'merged')::int = 1,
+  perform test._assert((test.val('r2')::jsonb ->> 'merged')::int = 1,
     'adding "MILK" again merges rather than duplicating');
-  perform public._assert((select count(*) = 4 from public.list_items
+  perform test._assert((select count(*) = 4 from public.list_items
                            where list_id = test.id('list_id')),
     'the list still has four items');
-  perform public._assert(
+  perform test._assert(
     (select quantity from public.list_items
       where list_id = test.id('list_id') and name = 'Milk') = '2 L',
     'the merge applied the new quantity to the existing row');
@@ -310,7 +317,7 @@ end $$;
 
 -- This is the exact ordering the app renders with.
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select string_agg(li.name, ',' order by coalesce(ss.sort_order, 2147483647), li.created_at)
        from public.list_items li
        left join public.store_sections ss on ss.id = li.store_section_id
@@ -336,7 +343,7 @@ begin
   update public.list_items set store_section_id = v_meat    where name = 'Chicken Thighs' and list_id=test.id('list_id');
   update public.list_items set store_section_id = v_bakery  where name = 'Sourdough'      and list_id=test.id('list_id');
 
-  perform public._assert(
+  perform test._assert(
     (select string_agg(li.name, ',' order by coalesce(ss.sort_order, 2147483647), li.created_at)
        from public.list_items li
        left join public.store_sections ss on ss.id = li.store_section_id
@@ -367,11 +374,11 @@ declare v_milk uuid;
 begin
   select id into v_milk from public.list_items where list_id=test.id('list_id') and name='Milk';
   update public.list_items set checked = true where id = v_milk;
-  perform public._assert(
+  perform test._assert(
     (select checked_at is not null from public.list_items where id = v_milk),
     'checking an item stamps checked_at');
   update public.list_items set checked = false where id = v_milk;
-  perform public._assert(
+  perform test._assert(
     (select checked_at is null from public.list_items where id = v_milk),
     'unchecking an item clears checked_at');
 end $$;
@@ -392,19 +399,19 @@ do $$ begin
     perform count(*) from public.list_items;
     raise exception 'FAILED: anon could query list_items';
   exception when insufficient_privilege then
-    perform public._assert(true, 'anon has no privilege on list_items at all');
+    perform test._assert(true, 'anon has no privilege on list_items at all');
   end;
   begin
     perform count(*) from public.shopping_lists;
     raise exception 'FAILED: anon could query shopping_lists';
   exception when insufficient_privilege then
-    perform public._assert(true, 'anon has no privilege on shopping_lists');
+    perform test._assert(true, 'anon has no privilege on shopping_lists');
   end;
   begin
     perform public.create_household('Sneaky');
     raise exception 'FAILED: anon could call create_household';
   exception when insufficient_privilege then
-    perform public._assert(true, 'anon cannot execute create_household()');
+    perform test._assert(true, 'anon cannot execute create_household()');
   end;
 end $$;
 
@@ -414,13 +421,13 @@ set role authenticated;
 set request.jwt.claim.sub = :'mallory';
 
 do $$ begin
-  perform public._assert((select count(*) = 0 from public.shopping_lists),
+  perform test._assert((select count(*) = 0 from public.shopping_lists),
     'mallory cannot SELECT another household''s lists');
-  perform public._assert((select count(*) = 0 from public.list_items),
+  perform test._assert((select count(*) = 0 from public.list_items),
     'mallory cannot SELECT another household''s items');
-  perform public._assert((select count(*) = 0 from public.stores),
+  perform test._assert((select count(*) = 0 from public.stores),
     'mallory cannot SELECT another household''s stores');
-  perform public._assert((select count(*) = 0 from public.store_sections),
+  perform test._assert((select count(*) = 0 from public.store_sections),
     'mallory cannot SELECT another household''s store sections');
 end $$;
 
@@ -428,22 +435,22 @@ end $$;
 do $$
 declare n integer;
 begin
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 0 from public.list_items where list_id = test.id('list_id')),
     'knowing the list UUID does not reveal its items');
 
   -- UPDATE: no rows match the USING clause, so nothing changes.
   update public.list_items set name = 'hacked' where list_id = test.id('list_id');
   get diagnostics n = row_count;
-  perform public._assert(n = 0, 'mallory''s UPDATE against a foreign list affects 0 rows');
+  perform test._assert(n = 0, 'mallory''s UPDATE against a foreign list affects 0 rows');
 
   delete from public.list_items where list_id = test.id('list_id');
   get diagnostics n = row_count;
-  perform public._assert(n = 0, 'mallory''s DELETE against a foreign list affects 0 rows');
+  perform test._assert(n = 0, 'mallory''s DELETE against a foreign list affects 0 rows');
 
   delete from public.shopping_lists where id = test.id('list_id');
   get diagnostics n = row_count;
-  perform public._assert(n = 0, 'mallory cannot DELETE a foreign list');
+  perform test._assert(n = 0, 'mallory cannot DELETE a foreign list');
 end $$;
 
 -- 5c. Forging household_id on INSERT — the devtools attack.
@@ -453,7 +460,7 @@ do $$ begin
     values (test.id('hh'), 'Injected list');
     raise exception 'FAILED: mallory inserted a list into a foreign household';
   exception when insufficient_privilege then
-    perform public._assert(true,
+    perform test._assert(true,
       'INSERT with a forged household_id is rejected by WITH CHECK');
   end;
 
@@ -462,7 +469,7 @@ do $$ begin
     values (test.id('list_id'), test.id('hh'), 'Injected item');
     raise exception 'FAILED: mallory inserted an item into a foreign list';
   exception when insufficient_privilege then
-    perform public._assert(true, 'INSERT of an item into a foreign list is rejected');
+    perform test._assert(true, 'INSERT of an item into a foreign list is rejected');
   end;
 
   begin
@@ -470,7 +477,7 @@ do $$ begin
       jsonb_build_array(jsonb_build_object('name','Injected')));
     raise exception 'FAILED: mallory added items through the RPC';
   exception when insufficient_privilege then
-    perform public._assert(true,
+    perform test._assert(true,
       'add_items_to_list() is SECURITY INVOKER, so RLS blocks mallory too');
   end;
 
@@ -478,7 +485,7 @@ do $$ begin
     perform public.complete_shopping_trip(test.id('list_id'));
     raise exception 'FAILED: mallory completed a foreign trip';
   exception when insufficient_privilege then
-    perform public._assert(true, 'complete_shopping_trip() is blocked for mallory');
+    perform test._assert(true, 'complete_shopping_trip() is blocked for mallory');
   end;
 end $$;
 
@@ -489,7 +496,7 @@ do $$ begin
     values (test.id('hh'), auth.uid(), 'owner');
     raise exception 'FAILED: mallory added herself to a household';
   exception when insufficient_privilege then
-    perform public._assert(true,
+    perform test._assert(true,
       'there is no INSERT policy on household_members, so self-enrolment fails');
   end;
 end $$;
@@ -505,7 +512,7 @@ do $$ begin
      where id = test.id('list_id');
     raise exception 'FAILED: a list was moved between households';
   exception when check_violation then
-    perform public._assert(true,
+    perform test._assert(true,
       'household_id is immutable even between two households you belong to');
   end;
 end $$;
@@ -513,12 +520,12 @@ end $$;
 -- 5f. Both members see the same data.
 reset role; set role authenticated; set request.jwt.claim.sub = :'bob';
 do $$ begin
-  perform public._assert((select count(*) = 4 from public.list_items
+  perform test._assert((select count(*) = 4 from public.list_items
                            where list_id = test.id('list_id')),
     'bob sees the same four items alice added');
   update public.list_items set checked = true
    where list_id = test.id('list_id') and name = 'Bananas';
-  perform public._assert(
+  perform test._assert(
     (select checked from public.list_items
       where list_id=test.id('list_id') and name='Bananas'),
     'bob can check an item alice created');
@@ -544,10 +551,10 @@ begin
 
   delete from public.store_sections where id = v_section;
 
-  perform public._assert(
+  perform test._assert(
     (select count(*) from public.list_items where list_id = test.id('list_id')) = v_before,
     'deleting a store section does not delete the groceries in it');
-  perform public._assert(
+  perform test._assert(
     (select store_section_id is null from public.list_items
       where list_id = test.id('list_id') and name = 'Bananas'),
     'items in a deleted section become unsorted, not orphaned');
@@ -564,10 +571,10 @@ begin
 
   delete from public.stores where id = v_id;
 
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 0 from public.store_sections where store_id = v_id),
     'deleting a store cascades to its sections');
-  perform public._assert(
+  perform test._assert(
     (select store_id is null from public.shopping_lists where name = 'Temp List'),
     'deleting a store un-assigns it from lists instead of deleting them');
 
@@ -585,13 +592,13 @@ begin
   perform public.add_items_to_list(v_list, jsonb_build_array(
     jsonb_build_object('name','One'), jsonb_build_object('name','Two')));
 
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.list_items where list_id = v_list),
     'the throwaway list has two items');
 
   delete from public.shopping_lists where id = v_list;
 
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 0 from public.list_items where list_id = v_list),
     'deleting a list cascades to its items — no orphans');
 end $$;
@@ -603,7 +610,7 @@ do $$ begin
      where household_id = test.id('hh') and user_id = auth.uid();
     raise exception 'FAILED: the last owner was removed';
   exception when check_violation then
-    perform public._assert(true, 'the last owner of a household cannot be removed');
+    perform test._assert(true, 'the last owner of a household cannot be removed');
   end;
 end $$;
 
@@ -621,26 +628,26 @@ select public.complete_shopping_trip(test.id('list_id')) as trip \gset
 select test.put('trip', :'trip') as _ \gset
 
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.list_items where list_id = test.id('list_id')),
     'unchecked items stay on the list after a trip');
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 0 from public.list_items
       where list_id = test.id('list_id') and checked),
     'checked items leave the active list');
-  perform public._assert(
+  perform test._assert(
     (select item_count = 2 from public.shopping_trips where id = test.id('trip')),
     'the trip records two purchased items');
-  perform public._assert(
+  perform test._assert(
     (select list_name = 'Weekly Groceries' from public.shopping_trips where id = test.id('trip')),
     'the trip snapshots the list name');
-  perform public._assert(
+  perform test._assert(
     (select store_name like 'Atlantic Superstore%' from public.shopping_trips where id = test.id('trip')),
     'the trip snapshots the store name');
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.shopping_trip_items where trip_id = test.id('trip')),
     'the purchased items are readable in history');
-  perform public._assert(
+  perform test._assert(
     (select quantity = '2 L' from public.shopping_trip_items
       where trip_id = test.id('trip') and name = 'Milk'),
     'history keeps the quantity that was bought');
@@ -648,14 +655,14 @@ end $$;
 
 -- The catalog is what will power autocomplete and "frequently bought".
 do $$ begin
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.household_items where household_id = test.id('hh')),
     'both purchased items entered the household catalog');
-  perform public._assert(
+  perform test._assert(
     (select times_purchased = 1 from public.household_items
       where household_id = test.id('hh') and normalized_name = 'milk'),
     'Milk has been purchased once');
-  perform public._assert(
+  perform test._assert(
     (select normalized_name = 'milk' from public.household_items
       where household_id = test.id('hh') and display_name = 'Milk'),
     'normalized_name is generated from display_name');
@@ -668,8 +675,8 @@ declare r jsonb;
 begin
   select public.add_items_to_list(test.id('list_id'),
     jsonb_build_array(jsonb_build_object('name','milk'))) into r;
-  perform public._assert((r ->> 'added')::int = 1, 'Milk can be added again from history');
-  perform public._assert(
+  perform test._assert((r ->> 'added')::int = 1, 'Milk can be added again from history');
+  perform test._assert(
     (select quantity = '2 L' from public.list_items
       where list_id = test.id('list_id') and name = 'milk'),
     'the remembered default quantity is applied on re-add');
@@ -678,11 +685,11 @@ begin
    where list_id = test.id('list_id') and name = 'milk';
   perform public.complete_shopping_trip(test.id('list_id'));
 
-  perform public._assert(
+  perform test._assert(
     (select times_purchased = 2 from public.household_items
       where household_id = test.id('hh') and normalized_name = 'milk'),
     'the catalog counter increments on the second purchase');
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.shopping_trips where household_id = test.id('hh')),
     'both trips are in history');
 end $$;
@@ -693,7 +700,7 @@ do $$ begin
     perform public.complete_shopping_trip(test.id('list_id'));
     raise exception 'FAILED: an empty trip was completed';
   exception when invalid_parameter_value then
-    perform public._assert(sqlerrm = 'NO_CHECKED_ITEMS',
+    perform test._assert(sqlerrm = 'NO_CHECKED_ITEMS',
       'completing a trip with nothing checked raises NO_CHECKED_ITEMS');
   end;
 end $$;
@@ -701,13 +708,13 @@ end $$;
 -- History survives the list being deleted.
 do $$ begin
   delete from public.shopping_lists where id = test.id('list_id');
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.shopping_trips where household_id = test.id('hh')),
     'deleting the list does not delete its shopping history');
-  perform public._assert(
+  perform test._assert(
     (select shopping_list_id is null from public.shopping_trips where id = test.id('trip')),
     'the trip keeps its snapshot and drops the dangling list reference');
-  perform public._assert(
+  perform test._assert(
     (select count(*) = 2 from public.shopping_trip_items where trip_id = test.id('trip')),
     'the purchased items are still browsable');
 end $$;
@@ -726,12 +733,12 @@ begin
   foreach t in array array['shopping_lists','list_items','stores','store_sections',
                            'shopping_trips','household_items','household_members']
   loop
-    perform public._assert(
+    perform test._assert(
       exists (select 1 from pg_publication_tables
                where pubname = 'supabase_realtime'
                  and schemaname = 'public' and tablename = t),
       format('%s is published to supabase_realtime', t));
-    perform public._assert(
+    perform test._assert(
       (select relreplident from pg_class
         where oid = format('public.%I', t)::regclass) = 'f',
       format('%s has REPLICA IDENTITY FULL (so DELETEs carry household_id)', t));
@@ -752,18 +759,41 @@ begin
     into v_leaks
   from information_schema.role_table_grants
   where grantee = 'anon' and table_schema = 'public';
-  perform public._assert(v_leaks is null,
+  perform test._assert(v_leaks is null,
     format('anon holds no privileges on any public table (found: %s)', coalesce(v_leaks, 'none')));
 
   select string_agg(c.relname, ', ') into v_leaks
   from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
-  perform public._assert(v_leaks is null,
+  perform test._assert(v_leaks is null,
     format('RLS is enabled on every public table (missing: %s)', coalesce(v_leaks, 'none')));
+
+  -- PostgREST exposes every function in `public` as an RPC endpoint, and
+  -- PostgreSQL grants EXECUTE to PUBLIC by default. Supabase's linter caught
+  -- `touch_parent_list` being reachable at /rest/v1/rpc/ by a signed-out
+  -- caller because 0006 only revoked the default for the ten functions the app
+  -- calls. 0008 closed it; this keeps it closed.
+  select string_agg(p.proname, ', ') into v_leaks
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and has_function_privilege('anon', p.oid, 'EXECUTE');
+  perform test._assert(v_leaks is null,
+    format('anon cannot execute any function in public (found: %s)', coalesce(v_leaks, 'none')));
+
+  -- Trigger functions are for the trigger machinery, never for callers.
+  select string_agg(p.proname, ', ') into v_leaks
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prorettype = 'trigger'::regtype
+    and has_function_privilege('authenticated', p.oid, 'EXECUTE');
+  perform test._assert(v_leaks is null,
+    format('no trigger function is callable as an RPC (found: %s)', coalesce(v_leaks, 'none')));
 end $$;
 
-drop function public._assert(boolean, text);
+drop function test._assert(boolean, text);
 drop schema test cascade;
 
 \echo ''

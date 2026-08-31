@@ -105,6 +105,34 @@ Being explicit, so nobody relies on something that is not there:
 * **Nothing is encrypted beyond transport and Supabase's storage encryption.**
   Grocery lists did not seem to warrant more.
 
+## The SECURITY DEFINER functions
+
+Five functions run with elevated rights — the three RPCs that bootstrap a
+household, plus the two authorization helpers — and Supabase's security advisor
+reports each of them. That is expected. Here is why each one has to be elevated,
+and what stops it being a hole:
+
+| Function | Why it is elevated | What checks the caller |
+| --- | --- | --- |
+| `create_household` | RLS has no INSERT policy on `households` or `household_members`, because a brand-new user cannot yet be a member of the household they are about to create | Refuses when `auth.uid()` is null; makes the caller, and only the caller, the owner |
+| `create_household_invite` | Writes a row the caller has no INSERT policy for | Returns `42501` unless `is_household_owner()` is true |
+| `redeem_household_invite` | Must read `household_invites`, which RLS restricts to owners — the person redeeming a code is by definition not one yet | Validates the code, its expiry, its use count; adds only `auth.uid()`, as a `member` |
+| `is_household_member` | Must not be re-filtered by the policy that called it, or policy evaluation recurses | Takes no user parameter; only ever answers about `auth.uid()` |
+| `is_household_owner` | Same | Same |
+
+All five set `search_path = ''` and schema-qualify every identifier, so none can
+be hijacked by an object planted on the caller's search path. None of them is
+callable by `anon`.
+
+The trigger functions are a different matter, and were a real bug: PostgreSQL
+grants EXECUTE to PUBLIC by default and PostgREST exposes every function in
+`public` as a REST endpoint, so `touch_parent_list` was briefly reachable at
+`/rest/v1/rpc/touch_parent_list` by a signed-out caller. PostgreSQL refuses to
+run a `trigger`-returning function outside a trigger, so there was no exploit,
+but the grant was wrong. `0008_trigger_function_grants.sql` revokes it, and the
+suite now asserts that no function in `public` is executable by `anon` and no
+trigger function is executable at all.
+
 ## Verifying it yourself
 
 ```sh
