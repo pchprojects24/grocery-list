@@ -1,375 +1,95 @@
-# Contributing to Young Lists
+# Contributing
 
-Thank you for your interest in contributing to Young Lists! This document provides guidelines for contributing to the project.
+This is a small private household app. It is kept deliberately simple so that
+one person — or a coding agent — can pick it up months later and change it
+without ceremony.
 
-## Getting Started
+Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first. It is short and it
+explains where everything lives.
 
-### Prerequisites
+## Setting up
 
-- Basic knowledge of JavaScript (ES6+)
-- Understanding of Firebase (Firestore and Authentication)
-- Familiarity with Progressive Web Apps (PWAs)
-- Git for version control
+There is nothing to install for the app itself.
 
-### Development Setup
-
-1. **Fork the repository**
-   ```bash
-   # Fork on GitHub, then clone your fork
-   git clone https://github.com/YOUR-USERNAME/grocery-list.git
-   cd grocery-list
-   ```
-
-2. **Set up Firebase for testing**
-   - Create a test Firebase project (separate from production)
-   - Follow the setup steps in `DEPLOYMENT_GUIDE.md`
-   - Use this test project for development
-
-3. **Run locally**
-   ```bash
-   cd young-lists
-   python3 -m http.server 8000
-   # Open http://localhost:8000
-   ```
-
-## Development Guidelines
-
-### Code Style
-
-**JavaScript:**
-- Use ES6+ syntax
-- 4-space indentation
-- Semicolons required
-- Descriptive variable names
-- Comments for complex logic
-
-**CSS:**
-- Use CSS variables for theming
-- Mobile-first responsive design
-- BEM-like naming for clarity
-- Keep specificity low
-
-**HTML:**
-- Semantic HTML5 elements
-- Accessible markup (ARIA labels where needed)
-- Keep structure clean and logical
-
-### File Organization
-
-```
-young-lists/
-├── app.js          # All JavaScript logic
-├── styles.css      # All styles
-├── index.html      # HTML structure
-├── sw.js           # Service Worker
-└── manifest.json   # PWA manifest
+```sh
+git clone https://github.com/pchprojects24/grocery-list.git
+cd grocery-list/young-lists
+python3 -m http.server 8000     # http://localhost:8000
 ```
 
-Keep all code organized within these files. Don't add new files unless absolutely necessary.
+You will need your own Supabase project to run it against — see
+[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md). Do not develop against the
+household's live project; make a second free one.
 
-## Making Changes
+To run the tests you need:
 
-### Before You Start
+* a local PostgreSQL installation (`initdb`, `pg_ctl`, `psql`) for the database
+  suite — no server needs to be running, the suite starts its own
+* Node 22 and Playwright's Chromium for the browser suites
 
-1. **Check existing issues** to avoid duplicate work
-2. **Open an issue** to discuss major changes
-3. **Create a branch** for your work
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-### Types of Contributions
-
-#### 🐛 Bug Fixes
-
-1. Reproduce the bug
-2. Identify the root cause
-3. Fix with minimal changes
-4. Test thoroughly
-5. Document the fix
-
-#### ✨ New Features
-
-1. Discuss in an issue first
-2. Keep features small and focused
-3. Ensure mobile compatibility
-4. Test offline functionality
-5. Update documentation
-
-#### 📝 Documentation
-
-1. Fix typos, improve clarity
-2. Add examples
-3. Update outdated information
-4. Keep formatting consistent
-
-#### 🎨 UI/UX Improvements
-
-1. Maintain the simple, clean aesthetic
-2. Ensure accessibility
-3. Test on multiple devices
-4. Keep mobile-first approach
-
-## Testing Your Changes
-
-### Manual Testing Checklist
-
-- [ ] App loads without errors
-- [ ] Authentication works (sign up, sign in, sign out)
-- [ ] Lists can be created, edited, deleted
-- [ ] Items can be added, checked, deleted
-- [ ] Real-time sync works (test with multiple browser windows)
-- [ ] Offline mode works
-- [ ] Service Worker updates properly
-- [ ] Mobile responsive (test on phone or use DevTools device mode)
-- [ ] Works in Chrome, Firefox, Safari
-- [ ] PWA installable
-
-### Browser Testing
-
-Test in:
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers (iOS Safari, Chrome Mobile)
-
-### Testing Service Worker
-
-```javascript
-// In DevTools → Application → Service Workers
-// 1. Check "Update on reload" during development
-// 2. Increment CACHE_NAME when making changes
-// 3. Test update flow
+```sh
+tests/run_all.sh
 ```
 
-### Testing Security
+## Rules that are not negotiable
 
-1. Test without authentication - should fail
-2. Test with auth but not in allowed list - should fail
-3. Test with auth and in allowed list - should succeed
-4. Verify Firestore rules are enforced
+These exist because each one was a real bug in the previous version.
 
-## Pull Request Process
+1. **Never put user-supplied text into `innerHTML`.** Use `el()` and `render()`
+   from `js/ui.js`. `el('span', { text: item.name })` sets `textContent`.
+2. **Never use `prompt()`, `confirm()` or `alert()`.** `js/ui.js` has
+   `promptDialog`, `confirmDialog`, `formDialog` and `actionSheet`.
+3. **Register event listeners once**, in a module's `init*()` function called
+   from `app.js`. A render function must not `addEventListener` on an element
+   it did not just create — that is how one tap ends up doing five things. For
+   a shared element, assign `.onclick`.
+4. **Security is a database policy.** Hiding a button is a convenience. If a
+   user must not be able to do something, it needs a policy in
+   `supabase/migrations/0005_rls.sql` and a test in
+   `supabase/tests/rls_tests.sql`.
+5. **Do not add a framework or a build step** without a concrete reason written
+   down. Portability between hosts and being editable without a toolchain are
+   features here, not accidents.
+6. **Do not claim offline support** the app does not have. See the offline
+   section of the README.
 
-### Before Submitting
+## Making a change
 
-1. **Test thoroughly** on your local setup
-2. **Update documentation** if needed
-3. **Check for console errors**
-4. **Verify Firebase rules** still work
-5. **Test on mobile** device if possible
+* Keep tap targets at 44px and inputs at 16px — the app is used one-handed in a
+  shop, on an iPhone.
+* Comment the non-obvious, especially anything touching security or the
+  database. Skip comments that restate the code.
+* Match the surrounding style: two-space indent in JS, lower-case SQL keywords,
+  `snake_case` in the database and `camelCase` in JavaScript.
+* Add a test. The three suites cover database behaviour, the interface, and the
+  service worker; put a check in whichever fits.
+* Run `tests/run_all.sh` before pushing.
 
-### Submitting a PR
+## Changing the database
 
-1. **Push your branch**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+1. Add a new numbered file in `supabase/migrations/`. Do not edit an existing
+   one that has already been applied to a live project.
+2. Add assertions to `supabase/tests/rls_tests.sql`, including at least one as
+   the unrelated `mallory` account.
+3. Run `supabase/build_schema.sh` to regenerate `supabase/schema.sql`.
+4. Run `tests/run_db_tests.sh`.
+5. Note in the pull request what has to be run against the live project.
 
-2. **Create Pull Request** on GitHub
+## Changing the icons
 
-3. **PR Title**: Clear and descriptive
-   - Good: "Add dark mode toggle"
-   - Bad: "Update app.js"
+```sh
+python3 tools/make_icons.py
+```
 
-4. **PR Description**: Include:
-   - What changed
-   - Why it changed
-   - How to test it
-   - Screenshots for UI changes
-   - Related issue number
+Standard library only; no dependencies.
 
-5. **PR Template**:
-   ```markdown
-   ## Description
-   Brief description of changes
-   
-   ## Motivation
-   Why is this change needed?
-   
-   ## Changes Made
-   - Change 1
-   - Change 2
-   
-   ## Testing
-   How to test these changes
-   
-   ## Screenshots (if applicable)
-   [Add screenshots]
-   
-   ## Checklist
-   - [ ] Code tested locally
-   - [ ] Documentation updated
-   - [ ] Mobile responsive
-   - [ ] No console errors
-   - [ ] Firestore rules still work
-   ```
+## After changing anything in `young-lists/`
 
-### Review Process
+Bump `CACHE_VERSION` in `young-lists/sw.js`. Correctness does not depend on it
+— the worker is network-first — but it drops the old cache instead of leaving
+stale entries around.
 
-1. Maintainer reviews the PR
-2. Address any feedback
-3. Update your branch as needed
-4. Once approved, it will be merged
+## Commits and pull requests
 
-## Code Review Guidelines
-
-### As a Reviewer
-
-- Be constructive and kind
-- Explain the "why" behind suggestions
-- Appreciate the contributor's effort
-- Test the changes locally
-- Check for security implications
-
-### As a Contributor
-
-- Be open to feedback
-- Ask questions if unclear
-- Make requested changes promptly
-- Thank reviewers for their time
-
-## Feature Ideas
-
-Some areas where contributions would be welcome:
-
-### High Priority
-- Dark mode support
-- Better offline indicators
-- Export/import lists functionality
-- Search across all lists
-- Item categories/tags
-
-### Medium Priority
-- List sharing with specific users
-- Custom item notes/details
-- Price tracking
-- Shopping list optimization (by store layout)
-- Undo/redo functionality
-
-### Low Priority
-- Desktop app (Electron wrapper)
-- Browser extension
-- Siri/Google Assistant integration
-- Barcode scanning
-- Recipe integration
-
-## Security Considerations
-
-### Never Commit
-- Real Firebase API keys (use template instead)
-- Personal data
-- Test account credentials
-- Firebase service account keys
-
-### Always Check
-- Firestore security rules are maintained
-- No XSS vulnerabilities
-- No data leaks in console logs
-- Sensitive data is properly protected
-
-### Report Security Issues
-- Email maintainer directly (don't open public issue)
-- Include details of the vulnerability
-- Allow time for a fix before disclosure
-
-## Documentation
-
-### When to Update Documentation
-
-Update docs when you:
-- Add a new feature
-- Change existing behavior
-- Fix a bug that might confuse users
-- Add new configuration options
-
-### Which Files to Update
-
-- `README.md` - Main documentation, features list
-- `DEPLOYMENT_GUIDE.md` - Setup steps
-- `SECURITY.md` - Security-related changes
-- `EXAMPLES.md` - Usage examples
-- Code comments - Complex logic
-
-## Versioning
-
-We follow Semantic Versioning (SemVer):
-
-- **MAJOR** (1.0.0): Breaking changes
-- **MINOR** (0.1.0): New features, backwards compatible
-- **PATCH** (0.0.1): Bug fixes, backwards compatible
-
-Update version in:
-- `manifest.json` (optional, for reference)
-- `index.html` (Settings → App → Version)
-- `sw.js` (CACHE_NAME)
-
-## Release Process
-
-1. Update version numbers
-2. Update CHANGELOG (if exists)
-3. Test thoroughly
-4. Create GitHub release
-5. Update deployment
-
-## Community Guidelines
-
-### Be Respectful
-- Treat everyone with respect
-- Welcome newcomers
-- Value diverse perspectives
-- Be patient with questions
-
-### Be Constructive
-- Provide helpful feedback
-- Suggest improvements
-- Share knowledge
-- Help others learn
-
-### Be Collaborative
-- Work together
-- Share ideas
-- Ask for help when needed
-- Celebrate successes
-
-## Getting Help
-
-### Questions?
-- Check existing documentation
-- Search existing issues
-- Open a new issue with "Question" label
-
-### Stuck?
-- Describe what you tried
-- Share error messages
-- Provide code snippets
-- Include browser/environment details
-
-### Need Clarification?
-- Ask in the issue or PR
-- Tag the maintainer
-- Be specific about what's unclear
-
-## Resources
-
-### Learning Resources
-- [MDN Web Docs](https://developer.mozilla.org/) - Web platform reference
-- [Firebase Documentation](https://firebase.google.com/docs) - Firebase guides
-- [PWA Guide](https://web.dev/progressive-web-apps/) - PWA best practices
-
-### Tools
-- [Firebase Console](https://console.firebase.google.com/) - Manage Firebase
-- [Chrome DevTools](https://developer.chrome.com/docs/devtools/) - Debug and test
-- [Lighthouse](https://developers.google.com/web/tools/lighthouse) - Audit PWA
-
-## License
-
-By contributing, you agree that your contributions will be subject to the same license as the project.
-
-## Thank You!
-
-Your contributions make Young Lists better for everyone. Thank you for taking the time to contribute! 🙏
-
----
-
-Questions? Open an issue or reach out to the maintainers.
+Write commit messages that say what changed and why, in prose. Describe user
+impact rather than the diff. Say plainly what you tested and what you did not.

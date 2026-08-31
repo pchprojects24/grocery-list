@@ -1,45 +1,30 @@
-# Firebase configuration with real keys (create a template version instead)
-# If you need to keep config in git, use environment variables
+# Young Lists is a static app with no build step, so there is very little to
+# ignore. Note that young-lists/config.js IS committed on purpose: it holds the
+# Supabase project URL and the publishable key, both of which are meant to be
+# visible in the browser. Privileged keys must never be put in this repository
+# at all — see SECURITY.md.
 
-# Local development files
+# OS / editor noise
 .DS_Store
 Thumbs.db
-
-# Editor directories and files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Logs
+# Logs and temporary files
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.tmp
+.cache/
 
-# Dependency directories (if you add build tools later)
+# Only present if someone adds tooling later
 node_modules/
-.npm
-
-# Build outputs (if you add a build step)
 dist/
 build/
-
-# Environment files
 .env
 .env.local
 .env.*.local
 
-# Firebase cache
-.firebase/
-firebase-debug.log
-firestore-debug.log
-
-# Testing
-coverage/
-.nyc_output/
-
-# Temporary files
-*.tmp
-.cache/
+# Local test artefacts
+/var/tmp/yl-pgdata/

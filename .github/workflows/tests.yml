@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Deliberately separate from deploy.yml: a red test run should never stop you
+# pushing a fix to a grocery list you are standing in a shop holding.
+
+jobs:
+  database:
+    name: Database and Row Level Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ubuntu-latest ships a PostgreSQL server; the suite starts its own
+      # throwaway cluster rather than using a service container, so it behaves
+      # the same here as it does on a laptop.
+      - name: Run SQL tests
+        run: tests/run_db_tests.sh
+
+  application:
+    name: Application and service worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: node tests/browser/run.mjs
+        env:
+          PLAYWRIGHT_PATH: playwright
+      - name: Service worker tests
+        run: node tests/sw/run.mjs
+        env:
+          PLAYWRIGHT_PATH: playwright
